@@ -1,0 +1,6 @@
+langchain==1.2.15
+langchain-openai==1.2.1
+langgraph==1.1.10
+langgraph-checkpoint-mongodb
+pydantic==2.13.3
+pymongo==4.17.0

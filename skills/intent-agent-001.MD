@@ -191,3 +191,20 @@ Set `finished = true` only when **all** of the following hold:
 
 If any of these are not met, leave `finished` unset (or false) and
 populate the appropriate gap fields instead.
+
+---
+
+## Orchestrator Output Contract
+
+When you are invoked from the intake orchestrator node, your structured
+output is constrained to two fields:
+
+- `context` (string): a short, self-contained synthesis of what is now
+  understood about the user's goal, target behavior, and testing surface.
+  This is the running summary that the readiness evaluator will read —
+  treat it as a handoff, not a scratchpad.
+- `clarification_questions` (list): only the questions still needed to
+  resolve blocking ambiguity. Return an empty list when nothing remains.
+
+Apply all the reasoning and rules above internally to decide what belongs
+in `context` and which questions remain — but only emit those two fields.
