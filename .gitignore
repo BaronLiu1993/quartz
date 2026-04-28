@@ -1,0 +1,10 @@
+.env
+.venv
+__pycache__/
+*.pyc
+*.pyo
+/obj_dir
+/rtl
+.DR_Store
+.vscode/
+/tests
