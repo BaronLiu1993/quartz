@@ -20,4 +20,5 @@ _SYNTHESIS_PROMPT_PATH = (
     Path(__file__).resolve().parent.parent / "skills" / "synthesis-agent-003.MD"
 )
 
-def _load
+def _execute_plan():
+    pass

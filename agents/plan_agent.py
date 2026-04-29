@@ -7,7 +7,6 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langchain.messages import SystemMessage, HumanMessage, ToolMessage
 from typing import Literal
 
-
 MODEL_NAME = "gpt-5.5"
 MAX_TOKENS = 2000
 _RESEARCH_PROMPT_PATH = (
@@ -19,7 +18,6 @@ _EVALUATION_PROMPT_PATH = (
 _SYNTHESIS_PROMPT_PATH = (
     Path(__file__).resolve().parent.parent / "skills" / "synthesis-agent-003.MD"
 )
-
 
 def _load_system_research_prompt() -> str:
     """Load the plan-agent system prompt from the skills directory."""
@@ -33,7 +31,6 @@ def _load_system_evaluation_prompt() -> str:
 def _load_system_synthesis_prompt() -> str:
     """Load the plan-agent system prompt from the skills directory."""
     return _SYNTHESIS_PROMPT_PATH.read_text(encoding="utf-8")
-
 
 class IntakeStateModel(BaseModel):
     user_id: str
@@ -49,6 +46,11 @@ class ConversationStateModel(BaseModel):
     type: str
     raw_conversation: str
 
+class EvaluationState(BaseModel):
+    user_id: str
+    session_id: str
+    feedback: str
+    finished_evaluation: bool
 
 class EvaluationModel(BaseModel):
     user_id: str
@@ -102,7 +104,8 @@ tools = []
 research_tools_by_name = {tool.name: tool for tool in tools}
 research_agent_with_tools = _research_agent.bind_tools(tools)
 
-# Embed each as a 
+# Embed and return top k relevant documents given a query to be used as context 
+# Then implement knowledge graph for multi hop retrieval in future iterations
 @tool(parse_docstring=True)
 def call_knowledge_semantic_search(query: str) -> str:
     """
@@ -110,7 +113,7 @@ def call_knowledge_semantic_search(query: str) -> str:
     """
     pass
 
-def tool_node(state: dict):
+def research_node(state: dict):
     """Performs the tool call"""
     result = []
     _record_answers(ConversationStateModel(
@@ -124,27 +127,26 @@ def tool_node(state: dict):
         tool = research_tools_by_name[tool_call["name"]]
         observation = tool.invoke(tool_call["args"])
         result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
+    
     return {"messages": result}
 
-def should_continue_research(state: MessagesState) -> Literal["tool_node", END]:
+def should_continue_research(state: MessagesState) -> Literal["research_node", END]:
     """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
-        return "tool_node"
-    return END
+        return "research_node"
+    return "continue"
 
 
-def should_continue_evaluation(state: IntakeStateModel):
+def should_continue_evaluation(state: EvaluationState):
     """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
-    messages = state["messages"]
-    last_message = messages[-1]
-    if last_message.accept_plan:
-        return ""
+    if not state.finished_evaluation:
+        return "finished"
     return END
 
 
-def evaluation_node(state: IntakeStateModel) -> dict:
+def evaluation_node(state: EvaluationState) -> dict:
     user_msg = "You are an evaluation agent."
     result: EvaluationModel = _evaluator_llm().invoke(
         [
@@ -161,20 +163,25 @@ def evaluation_node(state: IntakeStateModel) -> dict:
 def get_graph():
     agent_builder = StateGraph(MessagesState)
 
-    # Add nodes
-    agent_builder.add_node("llm_call", llm_call)
-    agent_builder.add_node("tool_node", tool_node)
+    agent_builder.add_node("llm_call")
+    agent_builder.add_node("research_node", research_node)
     agent_builder.add_node("evaluation_node", evaluation_node)
 
-    # Add edges to connect nodes
     agent_builder.add_edge(START, "llm_call")
     agent_builder.add_conditional_edges(
         "llm_call",
         should_continue_research,
-        ["tool_node", END]
+        ["research_node", "evaluation_node"]
     )
-    agent_builder.add_edge("tool_node", "llm_call")
+    agent_builder.add_edge("research_node", "llm_call")
     agent_builder.add_edge("evaluation_node", "llm_call")
+    agent_builder.add_conditional_edges(
+        "llm_call",
+        should_continue_evaluation,
+        ["evaluation_node", END]
+    )
     agent = agent_builder.compile()
     return agent
+
+get_graph()
 
