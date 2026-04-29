@@ -1,4 +1,7 @@
-.PHONY: setup build
+.PHONY: setup build sandbox
+
+build:
+	. .venv/bin/activate && uvicorn main:app --reload --port 8000
 
 setup:
 	python3 -m venv .venv
@@ -8,6 +11,6 @@ setup:
 	@echo "Running container..."
 	docker run -d --name quartz -p 27017:27017 quartz:latest
 
-build:
+sandbox:
 	@echo "Building Docker image from sandbox.Dockerfile..."
 	docker build -f sandbox/sandbox.Dockerfile -t quartz-sandbox:latest sandbox
