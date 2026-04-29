@@ -111,7 +111,7 @@ def call_knowledge_semantic_search(query: str) -> str:
     """
     Calls the knowledge semantic search tool to retrieve relevant information for the planning agent.
     """
-    pass
+    
 
 def research_node(state: dict):
     """Performs the tool call"""
