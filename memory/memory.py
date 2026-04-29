@@ -20,3 +20,4 @@ def insert_raw_conversation_memory(request: RawConveresationModel):
         client.insert_one(request)
     except Exception as e:
         raise Exception(f"Failed to insert raw conversation memory: {str(e)}")
+

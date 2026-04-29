@@ -23,7 +23,6 @@ def _load_system_research_prompt() -> str:
     """Load the plan-agent system prompt from the skills directory."""
     return _RESEARCH_PROMPT_PATH.read_text(encoding="utf-8")
 
-
 def _load_system_evaluation_prompt() -> str:
     """Load the plan-agent system prompt from the skills directory."""
     return _EVALUATION_PROMPT_PATH.read_text(encoding="utf-8")
@@ -106,6 +105,7 @@ research_agent_with_tools = _research_agent.bind_tools(tools)
 
 # Embed and return top k relevant documents given a query to be used as context 
 # Then implement knowledge graph for multi hop retrieval in future iterations
+# Abstract in memory layer and have it call this tool instead of having the agent call it directly to allow for more flexible retrieval strategies in the future
 @tool(parse_docstring=True)
 def call_knowledge_semantic_search(query: str) -> str:
     """
