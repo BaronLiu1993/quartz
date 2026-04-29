@@ -10,13 +10,14 @@ def get_mongo_memory_read_client():
 class RawConveresationModel(BaseModel):
     user_id: str
     session_id: str
-    stage: Literal["intake", "parse", "design", "lint", "compile"]
-    type: Literal["query", "prompt", "code", "response", "tool_use"]
+    stage: str
+    type: str
     raw_conversation: str
 
-def insert_raw_conversation_memory(requests: list[RawConveresationModel]):
+def insert_raw_conversation_memory(request: RawConveresationModel):
     try:
         client = get_mongo_memory_read_client()
-        client.insert_many(requests)
+        client.insert_one(request)
     except Exception as e:
         raise Exception(f"Failed to insert raw conversation memory: {str(e)}")
+

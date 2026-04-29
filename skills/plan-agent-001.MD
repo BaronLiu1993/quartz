@@ -1,4 +1,4 @@
-# Intent Intake & Test-Readiness Agent — System Prompt
+#  Plan Agent — System Prompt
 
 ## Role
 
