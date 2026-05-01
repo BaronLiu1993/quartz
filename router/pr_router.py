@@ -3,7 +3,8 @@ import json
 from typing import Dict, Optional
 from fastapi import APIRouter, Header, HTTPException, Request
 from memory import claim_delivery
-from service.pr_service import route_event, verify_signature
+from service.pr_service import verify_signature
+from queue.pr_task import process_pr_event
 
 router = APIRouter()
 
