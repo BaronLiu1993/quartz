@@ -1,11 +1,14 @@
 from __future__ import annotations
 import hashlib
 import hmac
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from memory import (
     PRMetadataModel,
@@ -31,28 +34,39 @@ GITHUB_HEADERS = {
 }
 
 def verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
+    logger.debug("Verifying GitHub webhook signature")
     if not signature_header or not signature_header.startswith("sha256="):
+        logger.warning("Invalid signature header format")
         return False
     expected = "sha256=" + hmac.new(
         GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
+    is_valid = hmac.compare_digest(expected, signature_header)
+    logger.info(f"Signature verification: {'valid' if is_valid else 'invalid'}")
+    return is_valid
 
 def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
     """Return (diff_text, truncated). Truncates at DIFF_BYTE_LIMIT bytes."""
+    logger.info(f"Fetching PR diff | owner={owner} | repo={repo} | number={number}")
     headers = {**GITHUB_HEADERS, "Accept": "application/vnd.github.v3.diff"}
-    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
-        response = client.get(
-            f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.content
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+            response = client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}",
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.content
 
-    truncated = len(data) > DIFF_BYTE_LIMIT
-    if truncated:
-        data = data[:DIFF_BYTE_LIMIT]
-    return data.decode("utf-8", errors="replace"), truncated
+        truncated = len(data) > DIFF_BYTE_LIMIT
+        if truncated:
+            logger.warning(f"PR diff truncated | original_size={len(data)} | limit={DIFF_BYTE_LIMIT}")
+            data = data[:DIFF_BYTE_LIMIT]
+        logger.info(f"Successfully fetched PR diff | size={len(data)} | truncated={truncated}")
+        return data.decode("utf-8", errors="replace"), truncated
+    except Exception as e:
+        logger.error(f"Failed to fetch PR diff | error={str(e)}", exc_info=True)
+        raise
 
 
 def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
@@ -169,11 +183,20 @@ def handle_issue_comment(payload: dict[str, Any]) -> None:
 
 
 def route_event(event: str, payload: dict[str, Any]) -> None:
-    if event == "pull_request":
-        handle_pull_request(payload)
-    elif event == "pull_request_review":
-        handle_pull_request_review(payload)
-    elif event == "issue_comment":
-        handle_issue_comment(payload)
-    else:
-        pass
+    logger.info(f"Routing GitHub event | event={event}")
+    try:
+        if event == "pull_request":
+            logger.debug(f"Handling pull_request event | action={payload.get('action')}")
+            handle_pull_request(payload)
+        elif event == "pull_request_review":
+            logger.debug(f"Handling pull_request_review event | action={payload.get('action')}")
+            handle_pull_request_review(payload)
+        elif event == "issue_comment":
+            logger.debug(f"Handling issue_comment event | action={payload.get('action')}")
+            handle_issue_comment(payload)
+        else:
+            logger.warning(f"Unknown event type | event={event}")
+            pass
+    except Exception as e:
+        logger.error(f"Failed to route event | event={event} | error={str(e)}", exc_info=True)
+        raise

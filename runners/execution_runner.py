@@ -38,12 +38,8 @@ def destroy_job(request: RequestModel):
     image_name = f"quartz-sandbox-{request.session_id}-{request.user_id}"
     subprocess.run(["docker", "rmi", "-f", image_name], check=True)
 
+# Create a docker container to isolate execution
 def run_execution(request: RequestModel):
-    """
-    Runs the execution of the compiled Verilog code on the specified testbench.
-    Perform this operation in a sandboxed environment.
-    """
-    # Create a docker container to isolate execution
     cmd = "./obj_dir/Vtb_adder"
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     return {
