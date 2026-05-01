@@ -5,14 +5,11 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 
-
 MONGO_URI = "mongodb://localhost:27017"
 DB_NAME = "memory"
 
-
 def get_mongo_memory_db():
     return MongoClient(MONGO_URI)[DB_NAME]
-
 
 class RawConveresationModel(BaseModel):
     user_id: str
@@ -20,7 +17,6 @@ class RawConveresationModel(BaseModel):
     stage: str
     type: str
     raw_conversation: str
-
 
 class PRMetadataModel(BaseModel):
     repo_full_name: str
