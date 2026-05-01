@@ -5,7 +5,6 @@ The router calls into this module. Out of scope: pull_request_review_comment
 """
 
 from __future__ import annotations
-
 import hashlib
 import hmac
 import os
@@ -37,10 +36,6 @@ GITHUB_HEADERS = {
     "User-Agent": "quartz-webhook",
 }
 
-
-# ---------------------------------------------------------------------------
-
-
 def verify_signature(body: bytes, signature_header: str | None) -> bool:
     if not signature_header or not signature_header.startswith("sha256="):
         return False
@@ -48,11 +43,6 @@ def verify_signature(body: bytes, signature_header: str | None) -> bool:
         GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(expected, signature_header)
-
-
-# ---------------------------------------------------------------------------
-# GitHub API calls (sync httpx; FastAPI runs background tasks in a threadpool)
-# ---------------------------------------------------------------------------
 
 def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
     """Return (diff_text, truncated). Truncates at DIFF_BYTE_LIMIT bytes."""
@@ -91,14 +81,8 @@ def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
             page += 1
     return filenames
 
-
-# ---------------------------------------------------------------------------
-# Persistence helpers
-# ---------------------------------------------------------------------------
-
 def session_id_for(repo_full_name: str, pr_number: int) -> str:
     return f"gh:{repo_full_name}#{pr_number}"
-
 
 def record_text(session_id: str, type_: str, text: str) -> None:
     insert_raw_conversation_memory(
@@ -111,12 +95,10 @@ def record_text(session_id: str, type_: str, text: str) -> None:
         )
     )
 
-
 def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
 
 def save_pr_metadata(
     pr: dict[str, Any],
@@ -152,11 +134,6 @@ def save_pr_metadata(
         )
     )
 
-
-# ---------------------------------------------------------------------------
-# Event handlers
-# ---------------------------------------------------------------------------
-
 def handle_pull_request(payload: dict[str, Any]) -> None:
     action = payload.get("action")
     if action not in {"opened", "synchronize", "reopened", "closed"}:
@@ -174,7 +151,6 @@ def handle_pull_request(payload: dict[str, Any]) -> None:
     record_text(session, "code", diff_text)
     save_pr_metadata(pr, repo_full_name, files, f"pull_request.{action}", truncated)
 
-
 def handle_pull_request_review(payload: dict[str, Any]) -> None:
     if payload.get("action") != "submitted":
         return
@@ -189,7 +165,6 @@ def handle_pull_request_review(payload: dict[str, Any]) -> None:
 
 
 def handle_issue_comment(payload: dict[str, Any]) -> None:
-    # issue_comment fires for plain issues too — only ingest PR comments.
     if payload.get("action") != "created":
         return
     if not payload.get("issue", {}).get("pull_request"):
@@ -207,4 +182,5 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
         handle_pull_request_review(payload)
     elif event == "issue_comment":
         handle_issue_comment(payload)
-    # Other event types are acknowledged but not stored.
+    else:
+        pass
