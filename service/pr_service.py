@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -30,7 +30,7 @@ GITHUB_HEADERS = {
     "User-Agent": "quartz-webhook",
 }
 
-def verify_signature(body: bytes, signature_header: str | None) -> bool:
+def verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = "sha256=" + hmac.new(

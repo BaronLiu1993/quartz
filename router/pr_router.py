@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 from typing import Dict, Optional
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from memory import claim_delivery
 from service.pr_service import route_event, verify_signature
 
@@ -10,7 +10,6 @@ router = APIRouter()
 @router.post("/webhooks/github")
 async def github_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
     x_hub_signature_256: Optional[str] = Header(default=None),
     x_github_event: str = Header(...),
     x_github_delivery: str = Header(...),
@@ -24,5 +23,6 @@ async def github_webhook(
         return {"status": "duplicate"}
     
     payload = json.loads(body)
-    background_tasks.add_task(route_event, x_github_event, payload)
+    from queue.pr_task import process_pr_event
+    process_pr_event.delay(x_github_event, payload)
     return {"status": "queued"}

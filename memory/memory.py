@@ -42,22 +42,26 @@ class PRMetadataModel(BaseModel):
     merged_at: Optional[datetime]
     diff_truncated: bool = False
 
-
 def insert_raw_conversation_memory(request: RawConveresationModel) -> None:
-    db = get_mongo_memory_db()
-    db["conversations"].insert_one(request.model_dump())
-
+    try:
+        db = get_mongo_memory_db()
+        db["conversations"].insert_one(request.model_dump())
+    except DuplicateKeyError:
+        raise Exception(f"Duplicate conversation memory for {request.user_id} in session {request.session_id} at stage {request.stage} and type {request.type}")
 
 def upsert_pr_metadata(record: PRMetadataModel) -> None:
     db = get_mongo_memory_db()
-    db["pr_metadata"].create_index(
+    try:
+        db["pr_metadata"].create_index(
         [("repo_full_name", 1), ("pr_number", 1)], unique=True
-    )
-    db["pr_metadata"].update_one(
-        {"repo_full_name": record.repo_full_name, "pr_number": record.pr_number},
-        {"$set": record.model_dump()},
-        upsert=True,
-    )
+        )
+        db["pr_metadata"].update_one(
+            {"repo_full_name": record.repo_full_name, "pr_number": record.pr_number},
+            {"$set": record.model_dump()},
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        raise Exception(f"Duplicate PR metadata for {record.repo_full_name}#{record.pr_number}")
 
 
 def claim_delivery(delivery_id: str) -> bool:
@@ -69,4 +73,4 @@ def claim_delivery(delivery_id: str) -> bool:
         )
         return True
     except DuplicateKeyError:
-        return False
+        raise Exception(f"Duplicate delivery ID: {delivery_id}")

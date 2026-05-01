@@ -1,10 +1,13 @@
+# Langchain and LangGraph imports
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langchain.messages import SystemMessage, HumanMessage, ToolMessage
+
+# Other imports
 from openai import BaseModel
 from memory import insert_raw_conversation_memory, RawConveresationModel
 from pathlib import Path
-from langgraph.graph import END, START, MessagesState, StateGraph
-from langchain.messages import SystemMessage, HumanMessage, ToolMessage
 from typing import Literal
 
 MODEL_NAME = "gpt-5.5"
@@ -19,6 +22,7 @@ _SYNTHESIS_PROMPT_PATH = (
     Path(__file__).resolve().parent.parent / "skills" / "synthesis-agent-003.MD"
 )
 
+# Load System Prompts at module level since they are static and don't need to be reloaded on every function call
 def _load_system_research_prompt() -> str:
     """Load the plan-agent system prompt from the skills directory."""
     return _RESEARCH_PROMPT_PATH.read_text(encoding="utf-8")
