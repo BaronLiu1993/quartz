@@ -51,11 +51,3 @@ def run_execution(request: RequestModel):
         "stderr": result.stderr,
         "returncode": result.returncode
     }
-
-"""
-user_id = str(uuid.uuid4())
-session_id = str(uuid.uuid4())
-run_job(RequestModel(user_id=user_id, session_id=session_id))
-sleep(10)  # Simulate some execution time
-destroy_job(RequestModel(user_id=user_id, session_id=session_id))
-"""

@@ -72,7 +72,6 @@ class PlanModel(BaseModel):
 RESEARCH_SYSTEM_PROMPT: str = _load_system_research_prompt()
 EVALUATION_SYSTEM_PROMPT: str = _load_system_evaluation_prompt()
 
-
 def _record_answers(request: ConversationStateModel) -> None:
     insert_raw_conversation_memory(
         RawConveresationModel(
@@ -111,6 +110,7 @@ def call_knowledge_semantic_search(query: str) -> str:
     """
     Calls the knowledge semantic search tool to retrieve relevant information for the planning agent.
     """
+    pass
     
 
 def research_node(state: dict):
@@ -182,6 +182,3 @@ def get_graph():
     )
     agent = agent_builder.compile()
     return agent
-
-get_graph()
-

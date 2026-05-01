@@ -61,10 +61,6 @@ def upsert_pr_metadata(record: PRMetadataModel) -> None:
 
 
 def claim_delivery(delivery_id: str) -> bool:
-    """Return True if this delivery_id is new, False if it has been seen before.
-
-    GitHub redelivers webhooks on 5xx and on user retry; this gives us idempotency.
-    """
     db = get_mongo_memory_db()
     db["webhook_deliveries"].create_index("delivery_id", unique=True)
     try:

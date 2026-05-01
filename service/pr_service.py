@@ -1,9 +1,3 @@
-"""PR ingestion: fetch diffs/files from GitHub and persist to MongoDB.
-
-The router calls into this module. Out of scope: pull_request_review_comment
-(inline review threads) and per-user OAuth tokens.
-"""
-
 from __future__ import annotations
 import hashlib
 import hmac
@@ -62,7 +56,6 @@ def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
 
 
 def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
-    """Filenames touched by the PR. Paginated; GitHub caps at ~3000 files."""
     filenames: list[str] = []
     with httpx.Client(timeout=HTTP_TIMEOUT, headers=GITHUB_HEADERS) as client:
         page = 1

@@ -7,7 +7,6 @@ from langgraph.graph import END, MessagesState
 from langchain.messages import SystemMessage, HumanMessage, ToolMessage
 from typing import Literal
 
-
 MODEL_NAME = "gpt-5.5"
 MAX_TOKENS = 2000
 _RESEARCH_PROMPT_PATH = (
