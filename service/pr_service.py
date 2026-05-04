@@ -4,10 +4,9 @@ import hmac
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
-
 import httpx
 
-from memory import (
+from memory.conversation_memory import (
     PRMetadataModel,
     RawConveresationModel,
     insert_raw_conversation_memory,

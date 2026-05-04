@@ -1,4 +1,4 @@
-from .memory import (
+from .conversation_memory import (
     RawConveresationModel,
     PRMetadataModel,
     insert_raw_conversation_memory,

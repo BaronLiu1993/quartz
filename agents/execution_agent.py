@@ -1,7 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from openai import BaseModel
-from memory import insert_raw_conversation_memory, RawConveresationModel
+from memory.conversation_memory import insert_raw_conversation_memory, RawConveresationModel
 from pathlib import Path
 from langgraph.graph import END, MessagesState
 from langchain.messages import SystemMessage, HumanMessage, ToolMessage

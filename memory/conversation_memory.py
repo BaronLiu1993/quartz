@@ -75,6 +75,7 @@ def upsert_pr_metadata(record: PRMetadataModel) -> None:
 def claim_delivery(delivery_id: str) -> bool:
     db = get_mongo_db()
     db["webhook_deliveries"].create_index("delivery_id", unique=True)
+    print("inserting delivery" + delivery_id)
     try:
         db["webhook_deliveries"].insert_one(
             {"delivery_id": delivery_id, "received_at": datetime.now(timezone.utc)}
@@ -83,3 +84,5 @@ def claim_delivery(delivery_id: str) -> bool:
     except DuplicateKeyError:   
         logger.info("Duplicate delivery ID received, skipping: %s", delivery_id)
         return False
+
+

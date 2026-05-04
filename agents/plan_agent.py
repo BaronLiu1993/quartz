@@ -6,7 +6,7 @@ from langchain.messages import SystemMessage, HumanMessage, ToolMessage
 
 # Other imports
 from openai import BaseModel
-from memory import insert_raw_conversation_memory, RawConveresationModel
+from memory.conversation_memory import insert_raw_conversation_memory, RawConveresationModel
 from pathlib import Path
 from typing import Literal
 
@@ -133,13 +133,13 @@ def research_node(state: dict):
     
     return {"messages": result}
 
-def should_continue_research(state: MessagesState) -> Literal["research_node", END]:
+def should_continue_research(state: MessagesState) -> str:
     """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
         return "research_node"
-    return "continue"
+    return "evaluation_node"
 
 
 def should_continue_evaluation(state: EvaluationState):
