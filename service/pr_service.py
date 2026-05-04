@@ -2,13 +2,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
-
-logger = logging.getLogger(__name__)
 
 from memory import (
     PRMetadataModel,
@@ -16,22 +13,18 @@ from memory import (
     insert_raw_conversation_memory,
     upsert_pr_metadata,
 )
+from .constants import (
+    GITHUB_TOKEN,
+    GITHUB_WEBHOOK_SECRET,
+    GITHUB_API,
+    LOCAL_USER_ID,
+    HTTP_TIMEOUT,
+    DIFF_BYTE_LIMIT,
+    STAGE,
+    GITHUB_HEADERS,
+)
 
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-GITHUB_WEBHOOK_SECRET = os.environ["GITHUB_WEBHOOK_SECRET"]
-LOCAL_USER_ID = os.environ.get("LOCAL_USER_ID", "local")
-
-GITHUB_API = "https://api.github.com"
-HTTP_TIMEOUT = 30.0
-DIFF_BYTE_LIMIT = 1_000_000  
-STAGE = "pr_ingest"
-
-GITHUB_HEADERS = {
-    "Authorization": f"Bearer {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "quartz-webhook",
-}
+logger = logging.getLogger(__name__)
 
 def verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     logger.debug("Verifying GitHub webhook signature")
@@ -46,7 +39,6 @@ def verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     return is_valid
 
 def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
-    """Return (diff_text, truncated). Truncates at DIFF_BYTE_LIMIT bytes."""
     logger.info(f"Fetching PR diff | owner={owner} | repo={repo} | number={number}")
     headers = {**GITHUB_HEADERS, "Accept": "application/vnd.github.v3.diff"}
     try:
@@ -189,14 +181,14 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
             logger.debug(f"Handling pull_request event | action={payload.get('action')}")
             handle_pull_request(payload)
         elif event == "pull_request_review":
-            logger.debug(f"Handling pull_request_review event | action={payload.get('action')}")
+            logger.debug(f"Handling pull_request_review event, action={payload.get('action')}")
             handle_pull_request_review(payload)
         elif event == "issue_comment":
-            logger.debug(f"Handling issue_comment event | action={payload.get('action')}")
+            logger.debug(f"Handling issue_comment event, action={payload.get('action')}")
             handle_issue_comment(payload)
         else:
-            logger.warning(f"Unknown event type | event={event}")
+            logger.warning(f"Unknown event type, event={event}")
             pass
     except Exception as e:
-        logger.error(f"Failed to route event | event={event} | error={str(e)}", exc_info=True)
+        logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
