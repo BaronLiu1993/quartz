@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from fastapi import APIRouter, Header, HTTPException, Request
 from memory import claim_delivery
 from service.pr_service import verify_signature
-from queue.pr_task import process_pr_event
+from async_queue.pr_task import process_pr_event
 
 router = APIRouter()
 
@@ -24,6 +24,5 @@ async def github_webhook(
         return {"status": "duplicate"}
     
     payload = json.loads(body)
-    from queue.pr_task import process_pr_event
     process_pr_event.delay(x_github_event, payload)
     return {"status": "queued"}

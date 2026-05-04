@@ -1,22 +1,23 @@
-.PHONY: setup build dev sandbox
+.PHONY: setup build dev worker sandbox
+
+setup:
+	python3 -m venv .venv
+	. .venv/bin/activate && python -m pip install --upgrade pip
+	. .venv/bin/activate && pip install -r requirements.txt
+	@echo "Starting MongoDB and RabbitMQ..."
+	docker compose up -d --build
 
 build:
-	@echo "Building application Docker image..."
-	docker build -t quartz:latest .
-	@echo "Starting MongoDB and RabbitMQ..."
-	docker compose up -d
+	@echo "Starting MongoDB and RabbitMQ containers..."
+	docker compose up -d --build
 
 dev:
 	@echo "Running development server: uvicorn main:app --reload --port 8000"
 	set -a && . .env && set +a && . .venv/bin/activate && uvicorn main:app --reload --port 8000
 
-setup:
-	python3 -m venv .venv
-	. .venv/bin/activate && python -m pip install --upgrade pip && python -V
-	@echo "Building Docker image..."
-	docker build -t quartz:latest .
-	@echo "Running container..."
-	docker compose up -d
+worker:
+	@echo "Running Celery worker: celery -A async_queue.config worker -Q pr --loglevel=info"
+	set -a && . .env && set +a && . .venv/bin/activate && celery -A async_queue.config worker -Q pr --loglevel=info
 
 sandbox:
 	@echo "Building Docker image from sandbox.Dockerfile..."

@@ -1,5 +1,4 @@
 import logging
-from uvicorn import logging
 
 from .config import app
 from service.pr_service import route_event
