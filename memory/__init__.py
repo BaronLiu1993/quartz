@@ -4,8 +4,8 @@ from .memory import (
     insert_raw_conversation_memory,
     upsert_pr_metadata,
     claim_delivery,
-    get_mongo_memory_db,
 )
+from .config import get_mongo_client, get_mongo_db
 
 __all__ = [
     "RawConveresationModel",
@@ -13,5 +13,6 @@ __all__ = [
     "insert_raw_conversation_memory",
     "upsert_pr_metadata",
     "claim_delivery",
-    "get_mongo_memory_db",
+    "get_mongo_client",
+    "get_mongo_db",
 ]

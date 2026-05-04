@@ -16,12 +16,11 @@ async def github_webhook(
     x_github_delivery: str = Header(...),
 ) -> Dict[str, str]:
     body = await request.body() 
-    
     if not verify_signature(body, x_hub_signature_256):
         raise HTTPException(status_code=401, detail="invalid signature")
     
     if not claim_delivery(x_github_delivery):
-        return {"status": "duplicate"}
+        raise HTTPException(status_code=500, detail="duplicate delivery id")
     
     payload = json.loads(body)
     process_pr_event.delay(x_github_event, payload)

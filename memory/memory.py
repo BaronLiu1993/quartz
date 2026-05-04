@@ -1,15 +1,13 @@
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel
-from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 
-MONGO_URI = "mongodb://localhost:27017"
-DB_NAME = "memory"
+from memory.config import get_mongo_db
 
-def get_mongo_memory_db():
-    return MongoClient(MONGO_URI)[DB_NAME]
+logger = logging.getLogger(__name__)
 
 class RawConveresationModel(BaseModel):
     user_id: str
@@ -44,13 +42,19 @@ class PRMetadataModel(BaseModel):
 
 def insert_raw_conversation_memory(request: RawConveresationModel) -> None:
     try:
-        db = get_mongo_memory_db()
+        db = get_mongo_db()
         db["conversations"].insert_one(request.model_dump())
     except DuplicateKeyError:
-        raise Exception(f"Duplicate conversation memory for {request.user_id} in session {request.session_id} at stage {request.stage} and type {request.type}")
+        logger.info(
+            "Duplicate conversation memory, skipping | user_id=%s session_id=%s stage=%s type=%s",
+            request.user_id,
+            request.session_id,
+            request.stage,
+            request.type,
+        )
 
 def upsert_pr_metadata(record: PRMetadataModel) -> None:
-    db = get_mongo_memory_db()
+    db = get_mongo_db()
     try:
         db["pr_metadata"].create_index(
         [("repo_full_name", 1), ("pr_number", 1)], unique=True
@@ -61,16 +65,21 @@ def upsert_pr_metadata(record: PRMetadataModel) -> None:
             upsert=True,
         )
     except DuplicateKeyError:
-        raise Exception(f"Duplicate PR metadata for {record.repo_full_name}#{record.pr_number}")
+        logger.info(
+            "Duplicate PR metadata, skipping | repo=%s pr_number=%s",
+            record.repo_full_name,
+            record.pr_number,
+        )
 
 
 def claim_delivery(delivery_id: str) -> bool:
-    db = get_mongo_memory_db()
+    db = get_mongo_db()
     db["webhook_deliveries"].create_index("delivery_id", unique=True)
     try:
         db["webhook_deliveries"].insert_one(
             {"delivery_id": delivery_id, "received_at": datetime.now(timezone.utc)}
         )
         return True
-    except DuplicateKeyError:
-        raise Exception(f"Duplicate delivery ID: {delivery_id}")
+    except DuplicateKeyError:   
+        logger.info("Duplicate delivery ID received, skipping: %s", delivery_id)
+        return False

@@ -41,7 +41,6 @@ class IntakeStateModel(BaseModel):
     code: str
     prompt: str
 
-
 class ConversationStateModel(BaseModel):
     user_id: str
     session_id: str

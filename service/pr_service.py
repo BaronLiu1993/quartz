@@ -14,7 +14,6 @@ from memory import (
     upsert_pr_metadata,
 )
 from .constants import (
-    GITHUB_TOKEN,
     GITHUB_WEBHOOK_SECRET,
     GITHUB_API,
     LOCAL_USER_ID,

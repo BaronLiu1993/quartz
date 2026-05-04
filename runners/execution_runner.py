@@ -3,6 +3,7 @@ import uuid
 from pydantic import BaseModel
 from time import sleep
 
+# This runner is responsible for executing the synthesized code in an isolated environment (e.g., Docker container) and returning the results.
 class RequestModel(BaseModel):
     user_id: str
     session_id: str
