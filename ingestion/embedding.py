@@ -6,7 +6,6 @@ import re
 
 from google import genai
 from google.genai import types
-import pymongo
 from pymongo import MongoClient
 
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".v", ".sv", ".vhd", ".vhdl"}
@@ -299,6 +298,24 @@ def save_chunks_to_jsonl(chunks: list[DocumentChunk], output_path: Path)-> None:
             json_line = json.dumps(chunk_dict)
             file.write(json_line + "\n")
 
+def save_chunks_to_mongodb(
+    chunks: list[DocumentChunk],
+    mongo_uri: str = "mongodb+srv://rijaaze:Kalki6!74@cluster0.qmhuety.mongodb.net/",
+    database_name: str = "hardware_assistant",
+    collection_name: str = "chunks",
+) -> None:
+    client = MongoClient(mongo_uri)
+    collection = client[database_name][collection_name]
+    collection.create_index("chunk_id", unique=True)
+
+    for chunk in chunks:
+        chunk_dict = chunk_to_dict(chunk)
+        collection.replace_one(
+            {"chunk_id": chunk.chunk_id},
+            chunk_dict,
+            upsert=True,
+        )
+
 def preview_chunk(chunk: DocumentChunk) -> None:
     print(f"chunk_id: {chunk.chunk_id}")
     print(f"source: {chunk.source}")
@@ -366,6 +383,7 @@ def main() -> None:
     all_chunks = deduplicate_chunks(all_chunks)
     embedded_chunks = embed_chunks(all_chunks)
     save_chunks_to_jsonl(embedded_chunks, Path("ingestion/chunks.jsonl"))
+    save_chunks_to_mongodb(embedded_chunks)
 
     print(f"Saved {len(embedded_chunks)} embedded chunks")
     preview_chunk(embedded_chunks[0])
