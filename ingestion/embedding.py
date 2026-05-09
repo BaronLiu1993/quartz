@@ -1,13 +1,13 @@
 from dataclasses import dataclass, asdict
-from pathlib import Path
-import json
 import os
 import re
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pymongo import MongoClient
 
+load_dotenv()
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".v", ".sv", ".vhd", ".vhdl"}
 
 SV_BLOCKS = {
@@ -30,61 +30,29 @@ VHDL_BLOCKS = {
 @dataclass
 class SourceDocument:
     source: str
-    relative_path: str
     url: str
     topic: str
     file_type: str
     section_title: str
     text: str
 
-def infer_topic_from_path(path: Path) -> str:
-    return path.parent.name or "root"
-
-def load_document(path: Path) -> SourceDocument:
-    raw_text = path.read_text(encoding="utf-8", errors="replace")
-    text = clean_text(raw_text)
-    return SourceDocument(
-        source= path.name,
-        relative_path= path.as_posix(),
-        url= "",
-        topic= infer_topic_from_path(path),
-        section_title= "",
-        file_type= path.suffix.lstrip("."),
-        text= text,
-    )
-
-def load_documents(paths: list[Path]) -> list[SourceDocument]:
-    documents = []
-    for path in paths:
-        doc = load_document(path)
-        documents.append(doc)
-    
-    return documents
-
-def find_source_files(folder: Path) -> list[Path]:
-    paths = []
-    for path in folder.iterdir():
-        if path.is_file() and path.suffix in SUPPORTED_EXTENSIONS:
-            paths.append(path)
-    
-    return paths
 
 def clean_text(text: str) -> str:
     text = text.replace("\r\n", "\n")
     text = text.replace("\r", "\n")
     text = text.strip()
-    return text 
+    return text
 
-def find_sv_block_starts(text: str)-> list[tuple[str, int]]:
+def find_sv_block_starts(text: str) -> list[tuple[str, int]]:
     pattern = r"(?m)^\s*(module|interface|package|program|primitive|class)\s+([A-Za-z_][\w$]*)"
-    matches = re.finditer(pattern,text)
+    matches = re.finditer(pattern, text)
 
     starts = []
 
     for match in matches:
         block_types = match.group(1)
         start_index = match.start()
-        starts.append((block_types,start_index))
+        starts.append((block_types, start_index))
 
     return starts
 
@@ -180,7 +148,6 @@ def split_vhdl_units(text: str) -> list[str]:
 class DocumentChunk:
     chunk_id: str
     source: str
-    relative_path: str
     url: str
     topic: str
     file_type: str
@@ -220,7 +187,26 @@ def infer_vhdl_section_title(unit_text: str) -> str:
 
     return ""
 
-def chunk_document(doc:SourceDocument, chunk_size: int=500) -> list[DocumentChunk]:
+def build_document(source:str, text:str, file_type:str, topic:str ="", url:str = "", section_title:str ="")-> SourceDocument:
+    cleaned_text = clean_text(text)
+    
+    return SourceDocument(
+    source = source,
+    url = url,
+    topic= topic,
+    file_type= file_type,
+    section_title= section_title,
+    text= cleaned_text,
+    )
+
+def process_document(client, source:str, text:str, file_type:str, topic:str ="", url:str = "", section_title = "")-> list[DocumentChunk]:
+    doc= build_document(source,text,file_type,topic,url,section_title)
+    chunks = chunk_document(doc)
+    chunks = deduplicate_chunks(chunks)
+    return embed_chunks(client,chunks)
+
+
+def chunk_document(doc: SourceDocument, chunk_size: int = 500) -> list[DocumentChunk]:
     chunks = []
     text = doc.text
 
@@ -231,7 +217,6 @@ def chunk_document(doc:SourceDocument, chunk_size: int=500) -> list[DocumentChun
             chunk = DocumentChunk(
                 chunk_id=f"{doc.source}_chunk_{index}",
                 source=doc.source,
-                relative_path=doc.relative_path,
                 url=doc.url,
                 topic=doc.topic,
                 file_type=doc.file_type,
@@ -250,7 +235,6 @@ def chunk_document(doc:SourceDocument, chunk_size: int=500) -> list[DocumentChun
             chunk = DocumentChunk(
                 chunk_id=f"{doc.source}_chunk_{index}",
                 source=doc.source,
-                relative_path=doc.relative_path,
                 url=doc.url,
                 topic=doc.topic,
                 file_type=doc.file_type,
@@ -262,26 +246,22 @@ def chunk_document(doc:SourceDocument, chunk_size: int=500) -> list[DocumentChun
 
         return chunks
 
-    for i in range(0,len(text), chunk_size):
+    for i in range(0, len(text), chunk_size):
         chunk_text = text[i:i + chunk_size]
         chunk_number = i // chunk_size
 
         chunk = DocumentChunk(
-            chunk_id = f"{doc.source}_chunk_{chunk_number}",
-            source= doc.source,
-            relative_path= doc.relative_path,
-            url= doc.url,
-            topic= doc.topic,
-            file_type= doc.file_type,
-            section_title= doc.section_title,
-            text= chunk_text,
-            embedding= None,
+            chunk_id=f"{doc.source}_chunk_{chunk_number}",
+            source=doc.source,
+            url=doc.url,
+            topic=doc.topic,
+            file_type=doc.file_type,
+            section_title=doc.section_title,
+            text=chunk_text,
+            embedding=None,
         )
         chunks.append(chunk)
     return chunks
-
-def chunk_to_dict(chunk: DocumentChunk) -> dict:
-    return asdict(chunk)
 
 def deduplicate_chunks(chunks: list[DocumentChunk]) -> list[DocumentChunk]:
     unique_chunks = {}
@@ -291,25 +271,18 @@ def deduplicate_chunks(chunks: list[DocumentChunk]) -> list[DocumentChunk]:
 
     return list(unique_chunks.values())
 
-def save_chunks_to_jsonl(chunks: list[DocumentChunk], output_path: Path)-> None:
-    with output_path.open("w", encoding="utf-8") as file:
-        for chunk in chunks:
-            chunk_dict = chunk_to_dict(chunk)
-            json_line = json.dumps(chunk_dict)
-            file.write(json_line + "\n")
-
-def save_chunks_to_mongodb(
-    chunks: list[DocumentChunk],
-    mongo_uri: str = "mongodb+srv://rijaaze:Kalki6!74@cluster0.qmhuety.mongodb.net/",
-    database_name: str = "hardware_assistant",
-    collection_name: str = "chunks",
-) -> None:
+def get_mongo_collection():
+    mongo_uri = os.getenv("MONGO_DB_URI_STRING")
+    print(mongo_uri)
     client = MongoClient(mongo_uri)
-    collection = client[database_name][collection_name]
+    return client["hardware_assistant"]["chunks"]
+
+def save_chunks_to_mongodb(chunks: list[DocumentChunk]) -> None:
+    collection = get_mongo_collection()
     collection.create_index("chunk_id", unique=True)
 
     for chunk in chunks:
-        chunk_dict = chunk_to_dict(chunk)
+        chunk_dict = asdict(chunk)
         collection.replace_one(
             {"chunk_id": chunk.chunk_id},
             chunk_dict,
@@ -319,7 +292,6 @@ def save_chunks_to_mongodb(
 def preview_chunk(chunk: DocumentChunk) -> None:
     print(f"chunk_id: {chunk.chunk_id}")
     print(f"source: {chunk.source}")
-    print(f"relative_path: {chunk.relative_path}")
     print(f"url: {chunk.url}")
     print(f"topic: {chunk.topic}")
     print(f"section_title: {chunk.section_title}")
@@ -340,9 +312,12 @@ def prepare_chunk_text(chunk: DocumentChunk) -> str:
         f"text: {chunk.text}"
     )
 
-def embed_chunk_text(text: str) -> list[float]:
+def get_gemini_client():
     client = genai.Client(api_key=os.getenv("Gemini_API_Key"))
+    return client
 
+
+def embed_chunk_text(client, text: str) -> list[float]:
     result = client.models.embed_content(
         model="gemini-embedding-001",
         contents=text,
@@ -354,40 +329,18 @@ def embed_chunk_text(text: str) -> list[float]:
 
     return result.embeddings[0].values
 
-def embed_chunk(chunk: DocumentChunk) -> DocumentChunk:
+def embed_chunk(client, chunk: DocumentChunk) -> DocumentChunk:
     prepared_text = prepare_chunk_text(chunk)
-    embedding = embed_chunk_text(prepared_text)
+    embedding = embed_chunk_text(client, prepared_text)
     chunk.embedding = embedding
     return chunk
 
-def embed_chunks(chunks: list[DocumentChunk]) -> list[DocumentChunk]:
+def embed_chunks(client, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
     embedded_chunks = []
 
     for chunk in chunks:
-        embedded_chunk = embed_chunk(chunk)
+        embedded_chunk = embed_chunk(client, chunk)
         embedded_chunks.append(embedded_chunk)
 
     return embedded_chunks
 
-def main() -> None:
-    folder = Path("ingestion")
-    paths = find_source_files(folder)
-    docs = load_documents(paths)
-
-    all_chunks = []
-
-    for doc in docs:
-        chunks = chunk_document(doc)
-        all_chunks.extend(chunks)
-
-    all_chunks = deduplicate_chunks(all_chunks)
-    embedded_chunks = embed_chunks(all_chunks)
-    save_chunks_to_jsonl(embedded_chunks, Path("ingestion/chunks.jsonl"))
-    save_chunks_to_mongodb(embedded_chunks)
-
-    print(f"Saved {len(embedded_chunks)} embedded chunks")
-    preview_chunk(embedded_chunks[0])
-
-
-if __name__ == "__main__":
-    main()
