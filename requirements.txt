@@ -4,3 +4,7 @@ langgraph==1.1.10
 langgraph-checkpoint-mongodb
 pydantic==2.13.3
 pymongo==4.17.0
+fastapi[standard]
+python-dotenv
+google-genai
+pymongo

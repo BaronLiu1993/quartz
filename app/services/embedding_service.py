@@ -50,9 +50,9 @@ def find_sv_block_starts(text: str) -> list[tuple[str, int]]:
     starts = []
 
     for match in matches:
-        block_types = match.group(1)
+        block_type = match.group(1)
         start_index = match.start()
-        starts.append((block_types, start_index))
+        starts.append((block_type, start_index))
 
     return starts
 
@@ -187,23 +187,38 @@ def infer_vhdl_section_title(unit_text: str) -> str:
 
     return ""
 
-def build_document(source:str, text:str, file_type:str, topic:str ="", url:str = "", section_title:str ="")-> SourceDocument:
+def build_document(
+    source: str,
+    text: str,
+    file_type: str,
+    topic: str = "",
+    url: str = "",
+    section_title: str = "",
+) -> SourceDocument:
     cleaned_text = clean_text(text)
-    
+
     return SourceDocument(
-    source = source,
-    url = url,
-    topic= topic,
-    file_type= file_type,
-    section_title= section_title,
-    text= cleaned_text,
+        source=source,
+        url=url,
+        topic=topic,
+        file_type=file_type,
+        section_title=section_title,
+        text=cleaned_text,
     )
 
-def process_document(client, source:str, text:str, file_type:str, topic:str ="", url:str = "", section_title = "")-> list[DocumentChunk]:
-    doc= build_document(source,text,file_type,topic,url,section_title)
+def process_document(
+    client,
+    source: str,
+    text: str,
+    file_type: str,
+    topic: str = "",
+    url: str = "",
+    section_title: str = "",
+) -> list[DocumentChunk]:
+    doc = build_document(source, text, file_type, topic, url, section_title)
     chunks = chunk_document(doc)
     chunks = deduplicate_chunks(chunks)
-    return embed_chunks(client,chunks)
+    return embed_chunks(client, chunks)
 
 
 def chunk_document(doc: SourceDocument, chunk_size: int = 500) -> list[DocumentChunk]:
