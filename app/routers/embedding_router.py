@@ -1,4 +1,6 @@
 from dataclasses import asdict 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from app.schemas.embedding_schema import ProcessDocumentRequest
 from app.services.embedding_service import(
@@ -15,7 +17,13 @@ router = APIRouter(
 ALLOWED_FILE_TYPES = {"txt", "md", "v", "sv", "vhd", "vhdl"}
 
 def normalize_file_type(file_type: str) -> str:
-    return file_type.strip().lower().lstrip(".")
+    normalized_file_type = file_type.strip().lower()
+    extension = Path(normalized_file_type).suffix
+
+    if extension:
+        return extension.lstrip(".")
+
+    return normalized_file_type.lstrip(".")
 
 @router.post("/process")
 def process_and_embed_document(request:ProcessDocumentRequest):

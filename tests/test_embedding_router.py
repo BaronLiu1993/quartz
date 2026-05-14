@@ -11,10 +11,9 @@ from app.main import app
 
 
 def test_normalize_file_type() -> None:
-    input:str = "baron.Sv"
-    result:str = normalize_file_type(input)
-    expected:str = "baron.sv"
-    assert result == expected
+    assert normalize_file_type("sv") == "sv"
+    assert normalize_file_type(".SV") == "sv"
+    assert normalize_file_type("baron.Sv") == "sv"
 
 client = TestClient(app)
 
