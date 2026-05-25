@@ -190,3 +190,4 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
     except Exception as e:
         logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
+
