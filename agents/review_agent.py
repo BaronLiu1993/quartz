@@ -6,11 +6,13 @@ from pydantic import BaseModel
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain.messages import SystemMessage, HumanMessage, ToolMessage
-from langgraph.graph import END, MessagesState, StateGraph
+from langgraph.graph import END, START, MessagesState, StateGraph
 from .constants import MAX_TOKENS, REVIEW_MODEL_NAME as MODEL_NAME
 from memory.conversation_memory import insert_raw_conversation_memory, RawConveresationModel
+from service.agent_service import build_pr_context
 
-llm = ChatOpenAI(model=MODEL_NAME, max_tokens=MAX_TOKENS)
+def get_review_llm():
+    return ChatOpenAI(model=MODEL_NAME, max_tokens=MAX_TOKENS)
 
 _REVIEW_PROMPT_PATH = (
     Path(__file__).resolve().parent.parent / "skills" / "review-agent-001.MD"
@@ -23,24 +25,39 @@ def _load_system_review_prompt() -> str:
 # Gather context on what to do and what it needs to perform
 @tool
 def get_pr_history(pr_number: int, repo_full_name: str):
-    pass
+    #by using building pr context function, you get all the information needed from a user and the pr number
+    #this below is a docsstring and the function and langchain requires this
+    """Fetch stored PR metadata, code diff entries, and review/comment history."""
+    return build_pr_context(repo_full_name, pr_number)
 
 @tool
 def start_research(pr_number: int, repo_full_name: str, research_focus: Optional[str] = None):
+    """Start deeper research for a PR when the review agent needs more context."""
     pass
 
 @tool
 def execute_simulation():
+    """Run lint or simulation for the current PR when execution is needed."""
     pass
 
-tools = [get_pr_history, start_research]
-tools_by_name = {tool.name: tool for tool in tools}
-llm_with_tools = llm.bind_tools(tools)
+REVIEW_TOOLS = [
+    get_pr_history, 
+    start_research,
+    ]
+
+REVIEW_TOOLS_BY_NAME = {}
+
+for review_tools in REVIEW_TOOLS_BY_NAME:
+    REVIEW_TOOLS_BY_NAME[review_tools.name] = review_tools
+
+
+def get_review_with_tool():
+    return get_review_llm().bind_tools(REVIEW_TOOLS)
 
 def llm_call(state: MessagesState) -> str:
     return {
         "messages": [
-            llm_with_tools.invoke(
+            get_review_with_tool().invoke(
                 [
                     SystemMessage(
                         content=_load_system_review_prompt()
@@ -54,12 +71,18 @@ def llm_call(state: MessagesState) -> str:
 # Tool Node for calling the tools and getting the results back into the graph
 def tool_node(state: dict):
     result = []
+
     for tool_call in state["messages"][-1].tool_calls:
         tool_name = tool_call["name"]
         tool_args = tool_call["args"]
-        if tool_name in tools_by_name:
-            tool_result = tools_by_name[tool_name].invoke(**tool_args)
-            result.append(tool_result)
+
+        if tool_name in REVIEW_TOOLS_BY_NAME:
+            tool = REVIEW_TOOLS_BY_NAME[tool_name]
+            tool_result= tool.invoke(tool_args)
+            result.append(
+                ToolMessage(content=str(tool_result),
+                            tool_call_id = tool_call["id"],)
+                        )
     return { "messages": result}
 
 def continue_researching(state: dict):
@@ -69,3 +92,16 @@ def continue_researching(state: dict):
         return "tool_node"
     return END
 
+def get_review_graph():
+    graph = StateGraph(MessagesState)
+
+    graph.add_node("llm_call",llm_call)
+    graph.add_node("tool_node", tool_node)
+    
+    graph.add_edge(START,"llm_call")
+
+    graph.add_conditional_edges("llm_call", continue_researching,{"tool_node":"tool_node", END:END,},)
+
+    graph.add_edge("tool_node","llm_call")
+
+    return graph.compile()

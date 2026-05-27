@@ -18,7 +18,7 @@ def build_pr_context(repo_full_name:str, pr_number:int):
     session_id = f"gh:{repo_full_name}#{pr_number}"
 
     metadata = fetch_pr_metadata(repo_full_name,pr_number)
-    conversations = fetch_pr_conversations(repo_full_name,session_id)
+    conversations = fetch_pr_conversations(session_id)
 
     response_entries = []
     code_entries = []

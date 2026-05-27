@@ -76,13 +76,16 @@ def test_build_pr_context_combines_metadata_and_conversations() -> None:
         },
     ]
 
-    with patch("service.agent_service.fetch_pr_metadata", return_value=metadata):
-        with patch("service.agent_service.fetch_pr_conversations", return_value=conversations):
+    with patch("service.agent_service.fetch_pr_metadata", return_value=metadata) as mock_fetch_metadata:
+        with patch("service.agent_service.fetch_pr_conversations", return_value=conversations) as mock_fetch_conversations:
             result = build_pr_context("baron", 9)
 
+    mock_fetch_conversations.assert_called_once_with("gh:baron#9")
+    mock_fetch_metadata.assert_called_once_with("baron",9)
     assert result["repo_full_name"] == "baron"
     assert result["pr_number"] == 9
     assert result["session_id"] == "gh:baron#9"
     assert result["metadata"] == metadata
     assert result["code_entries"] == [conversations[0]]
     assert result["response_entries"] == [conversations[1]]
+    
