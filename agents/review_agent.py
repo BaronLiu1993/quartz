@@ -47,7 +47,7 @@ REVIEW_TOOLS = [
 
 REVIEW_TOOLS_BY_NAME = {}
 
-for review_tools in REVIEW_TOOLS_BY_NAME:
+for review_tools in REVIEW_TOOLS:
     REVIEW_TOOLS_BY_NAME[review_tools.name] = review_tools
 
 
@@ -105,3 +105,15 @@ def get_review_graph():
     graph.add_edge("tool_node","llm_call")
 
     return graph.compile()
+
+def review_pull_request(repo_full_name:str, pr_number:int):
+    graph = get_review_graph()
+
+    user_message = HumanMessage(
+        content= (
+                f"Review pull request {pr_number} in repository {repo_full_name}. "
+                "Use get_pr_history to inspect the stored PR context before writing the review."
+        )
+    )
+
+    return graph.invoke({"messages": [user_message]})

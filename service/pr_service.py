@@ -131,6 +131,10 @@ def save_pr_metadata(
         )
     )
 
+def trigger_review_agent(repo_full_name:str, pr_number:int):
+    from agents.review_agent import review_pull_request
+    review_pull_request(repo_full_name, pr_number)
+
 def handle_pull_request(payload: dict[str, Any]) -> None:
     action = payload.get("action")
     if action not in {"opened", "synchronize", "reopened", "closed"}:
@@ -147,6 +151,7 @@ def handle_pull_request(payload: dict[str, Any]) -> None:
 
     record_text(session, "code", diff_text)
     save_pr_metadata(pr, repo_full_name, files, f"pull_request.{action}", truncated)
+    trigger_review_agent(repo_full_name,number)
 
 def handle_pull_request_review(payload: dict[str, Any]) -> None:
     if payload.get("action") != "submitted":

@@ -1,14 +1,14 @@
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
-from langchain.messages import AIMessage, ToolMessage
+from langchain.messages import AIMessage, ToolMessage,HumanMessage
 from agents.review_agent import tool_node
 from langgraph.graph import END
 
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from agents.review_agent import get_pr_history, continue_researching, get_review_graph, _load_system_review_prompt
+from agents.review_agent import get_pr_history, continue_researching, get_review_graph, _load_system_review_prompt, review_pull_request
 
 
 def test_get_pr_history_returns_built_pr_context() -> None:
@@ -121,3 +121,22 @@ def test_load_system_review_prompt_reads_prompt_file() -> None:
 
     assert "HDL pull request review agent" in prompt
     assert "get_pr_history" in prompt
+
+def test_review_pull_request_invokes_review_graph()-> None:
+    fake_graph = Mock()
+    fake_graph.invoke.return_value = {"messages":["done"]}
+
+    with patch("agents.review_agent.get_review_graph", return_value=fake_graph):
+        result = review_pull_request("baron", 9)
+
+    assert result == {"messages": ["done"]}
+    fake_graph.invoke.assert_called_once()
+
+    graph_input = fake_graph.invoke.call_args.args[0]
+    first_message = graph_input["messages"][0]
+
+    assert isinstance(first_message, HumanMessage)
+    assert "Review pull request 9" in first_message.content
+    assert "baron" in first_message.content
+    assert "get_pr_history" in first_message.content
+

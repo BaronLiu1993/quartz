@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 load_dotenv()
 
 from service.constants import GITHUB_WEBHOOK_SECRET
-from service.pr_service import verify_signature,route_event,handle_pull_request,handle_pull_request_review,handle_issue_comment,session_id_for,record_text
+from service.pr_service import verify_signature,route_event,handle_pull_request,handle_pull_request_review,handle_issue_comment,session_id_for,record_text,trigger_review_agent
 
 def test_verify_signature_rejects_missing_signature()-> None:
     body = b'{"action":"opened"}'
@@ -84,17 +84,20 @@ def test_handle_pull_request_ignores_unsupported_action() -> None:
     fake_fetch_pr_files = Mock()
     fake_record_text = Mock()
     fake_save_pr_metadata = Mock()
+    fake_trigger_review_agent = Mock()
 
     with patch("service.pr_service.fetch_pr_diff", fake_fetch_pr_diff):
         with patch("service.pr_service.fetch_pr_files", fake_fetch_pr_files):
             with patch("service.pr_service.record_text", fake_record_text):
                 with patch("service.pr_service.save_pr_metadata", fake_save_pr_metadata):
-                    handle_pull_request(payload)
+                    with patch("service.pr_service.trigger_review_agent", fake_trigger_review_agent):
+                        handle_pull_request(payload)
 
     fake_fetch_pr_diff.assert_not_called()
     fake_fetch_pr_files.assert_not_called()
     fake_record_text.assert_not_called()
     fake_save_pr_metadata.assert_not_called()
+    fake_trigger_review_agent.assert_not_called()
 
 def test_handle_pull_request_processes_supported_action() -> None:
     payload = {
@@ -129,15 +132,18 @@ def test_handle_pull_request_processes_supported_action() -> None:
     fake_fetch_pr_files = Mock(return_value=["rtl/counter.sv"])
     fake_record_text = Mock()
     fake_save_pr_metadata = Mock()
+    fake_trigger_review_agent = Mock()
 
     with patch("service.pr_service.fetch_pr_diff", fake_fetch_pr_diff):
         with patch("service.pr_service.fetch_pr_files", fake_fetch_pr_files):
             with patch("service.pr_service.record_text", fake_record_text):
                 with patch("service.pr_service.save_pr_metadata", fake_save_pr_metadata):
-                    handle_pull_request(payload)
+                    with patch("service.pr_service.trigger_review_agent", fake_trigger_review_agent):
+                        handle_pull_request(payload)
 
     fake_fetch_pr_diff.assert_called_once_with("octo", "demo", 7)
     fake_fetch_pr_files.assert_called_once_with("octo", "demo", 7)
+    fake_trigger_review_agent.assert_called_once_with("octo/demo", 7)
 
     fake_record_text.assert_called_once_with(
         "gh:octo/demo#7",
@@ -262,3 +268,11 @@ def test_record_text_inserts_conversation_memory() -> None:
     assert inserted_model.session_id == "gh:octo/demo#7"
     assert inserted_model.type == "code"
     assert inserted_model.raw_conversation == "diff text"
+
+def test_trigger_review_agent_calls_review_pull_request()-> None:
+    fake_review_pull_request = Mock()
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        trigger_review_agent("baron", 9)
+
+    fake_review_pull_request.assert_called_once_with("baron", 9)
