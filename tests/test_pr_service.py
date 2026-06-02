@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import sys
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 
 from dotenv import load_dotenv
 
@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 load_dotenv()
 
 from service.constants import GITHUB_WEBHOOK_SECRET
-from service.pr_service import verify_signature,route_event,handle_pull_request,handle_pull_request_review,handle_issue_comment,session_id_for,record_text,trigger_review_agent
+from service.pr_service import verify_signature,route_event,handle_pull_request,handle_pull_request_review,handle_issue_comment,session_id_for,record_text,trigger_review_agent,post_pr_comment
 
 def test_verify_signature_rejects_missing_signature()-> None:
     body = b'{"action":"opened"}'
@@ -270,9 +270,36 @@ def test_record_text_inserts_conversation_memory() -> None:
     assert inserted_model.raw_conversation == "diff text"
 
 def test_trigger_review_agent_calls_review_pull_request()-> None:
-    fake_review_pull_request = Mock()
+    fake_review_pull_request = Mock(return_value="AI review text")
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock()
 
     with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
-        trigger_review_agent("baron", 9)
+        with patch("service.pr_service.record_text", fake_record_text):
+            with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                trigger_review_agent("baron", 9)
 
     fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_record_text.assert_called_once_with("gh:baron#9","response", "AI review text")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text")
+
+def test_post_pr_comment_posts_comment_to_github()-> None:
+    fake_response = Mock()
+    fake_response.json.return_value = {"id": 123}
+
+    fake_client = Mock()
+    fake_client.post.return_value = fake_response
+
+    fake_context = MagicMock()
+    fake_context.__enter__.return_value = fake_client
+    fake_context.__exit__.return_value = None
+
+    with patch("service.pr_service.httpx.Client", return_value=fake_context):
+        result = post_pr_comment("octo/demo", 7, "AI review text")
+    
+    assert result == {"id": 123}
+    fake_client.post.assert_called_once_with(
+    "https://api.github.com/repos/octo/demo/issues/7/comments",json={"body": "AI review text"},
+    )
+    fake_response.raise_for_status.assert_called_once()
+

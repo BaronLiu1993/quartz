@@ -124,12 +124,16 @@ def test_load_system_review_prompt_reads_prompt_file() -> None:
 
 def test_review_pull_request_invokes_review_graph()-> None:
     fake_graph = Mock()
-    fake_graph.invoke.return_value = {"messages":["done"]}
+    fake_graph.invoke.return_value = {"messages":[
+        HumanMessage(content="start"),
+        AIMessage(content="final review text"),
+    ]
+    }
 
     with patch("agents.review_agent.get_review_graph", return_value=fake_graph):
         result = review_pull_request("baron", 9)
 
-    assert result == {"messages": ["done"]}
+    assert result == "final review text"
     fake_graph.invoke.assert_called_once()
 
     graph_input = fake_graph.invoke.call_args.args[0]

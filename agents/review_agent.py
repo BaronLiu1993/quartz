@@ -116,4 +116,12 @@ def review_pull_request(repo_full_name:str, pr_number:int):
         )
     )
 
-    return graph.invoke({"messages": [user_message]})
+    review_state = graph.invoke({"messages": [user_message]})
+    return extract_final_review_text(review_state)
+
+def extract_final_review_text(review_state:dict) -> str:
+    messages = review_state.get("messages", [])
+    if not messages:
+        return ""
+    final_message = messages[-1]
+    return final_message.content
