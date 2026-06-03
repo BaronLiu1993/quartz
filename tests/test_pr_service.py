@@ -159,6 +159,24 @@ def test_handle_pull_request_processes_supported_action() -> None:
         False,
     )
 
+def test_trigger_review_agent_still_records_when_github_post_fails()-> None:
+    fake_review_pull_request = Mock(return_value = "AI review text")
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock(side_effect=RuntimeError("github down"))
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        with patch("service.pr_service.record_text", fake_record_text):
+            with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                trigger_review_agent("baron", 9)
+    fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_record_text.assert_called_with(
+        "gh:baron#9",
+        "response",
+        "AI review text",
+    )
+    fake_post_pr_comment.assert_called_once_with("baron",9,"AI review text")
+
+
 def test_handle_pull_request_review_ignores_non_submitted_action() -> None:
     payload = {"action": "edited"}
 
@@ -303,3 +321,16 @@ def test_post_pr_comment_posts_comment_to_github()-> None:
     )
     fake_response.raise_for_status.assert_called_once()
 
+def test_trigger_review_agent_does_not_record_or_post_when_review_generation_fails()->None:
+    fake_review_pull_request = Mock(side_effect=RuntimeError("openai down"))
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock()
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        with patch("service.pr_service.record_text", fake_record_text):
+            with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                trigger_review_agent("baron", 9)
+
+    fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_record_text.assert_not_called()
+    fake_post_pr_comment.assert_not_called()

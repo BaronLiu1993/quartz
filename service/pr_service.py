@@ -141,11 +141,19 @@ def save_pr_metadata(
 
 def trigger_review_agent(repo_full_name:str, pr_number:int):
     from agents.review_agent import review_pull_request
+    try:
+        review_text = review_pull_request(repo_full_name, pr_number)
+    except Exception:
+        logger.exception("Failed to generate PR review")
+        return
 
-    review_text = review_pull_request(repo_full_name, pr_number)
     session = session_id_for(repo_full_name,pr_number)
     record_text(session,"response", review_text)
-    post_pr_comment(repo_full_name,pr_number,review_text)
+
+    try:
+        post_pr_comment(repo_full_name,pr_number,review_text)
+    except Exception:
+        logger.exception("Failed to post PR review comment")
 
 def handle_pull_request(payload: dict[str, Any]) -> None:
     action = payload.get("action")

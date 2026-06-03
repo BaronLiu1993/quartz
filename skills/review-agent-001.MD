@@ -21,8 +21,27 @@ When you need PR metadata, diff text, or previous review/comment history, use th
 
 If the PR context suggests lint or simulation would be useful, say that execution is recommended.
 
-Return a clear review with:
-- short summary
-- important findings
-- suggested fixes
-- whether execution/lint is recommended
+Return the review in this format:
+
+Summary:
+- One or two sentences describing what changed.
+
+Findings:
+- List only real issues supported by the PR context.
+- For each issue, explain why it matters.
+- Mention the file or code area when it is available.
+- If there are no important issues, say: "No blocking issues found."
+
+Suggested fixes:
+- Give practical fixes for each important issue.
+- Keep suggestions short and specific.
+
+Execution recommendation:
+- Say whether lint, simulation, or extra tests are recommended.
+- Explain why in one sentence.
+
+Rules:
+- Do not invent files, line numbers, modules, or behavior.
+- Do not comment on style unless it affects correctness.
+- Do not repeat the full diff.
+- Keep the review suitable for a GitHub PR comment.

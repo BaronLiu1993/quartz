@@ -116,12 +116,6 @@ def test_get_review_graph_compiles() -> None:
 
     assert graph is not None
 
-def test_load_system_review_prompt_reads_prompt_file() -> None:
-    prompt = _load_system_review_prompt()
-
-    assert "HDL pull request review agent" in prompt
-    assert "get_pr_history" in prompt
-
 def test_review_pull_request_invokes_review_graph()-> None:
     fake_graph = Mock()
     fake_graph.invoke.return_value = {"messages":[
@@ -144,3 +138,11 @@ def test_review_pull_request_invokes_review_graph()-> None:
     assert "baron" in first_message.content
     assert "get_pr_history" in first_message.content
 
+def test_load_system_review_prompt_reads_prompt_file()-> None:
+    prompt = _load_system_review_prompt()
+
+    assert "HDL pull request review agent" in prompt
+    assert "get_pr_history" in prompt
+    assert "No blocking issues found." in prompt
+    assert "Do not invent files" in prompt
+    assert "GitHub PR comment" in prompt
