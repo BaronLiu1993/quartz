@@ -192,3 +192,28 @@ def test_execute_simulation_runs_lint()->None:
 
 def test_review_tools_include_execute_simulation()->None:
     assert "execute_simulation" in REVIEW_TOOLS_BY_NAME
+
+def test_start_research_returns_best_embedded_context() -> None:
+    expected_chunks =[
+         {
+            "chunk_id": "reset-guide",
+            "source": "reset-guide.md",
+            "text": "Counters should reset to zero before incrementing.",
+            "score": 1.0,
+        }
+    ]
+    
+    with patch("agents.review_agent.search_relevant_chunks", return_value=expected_chunks) as fake_search:
+        result = start_research.invoke(
+            {
+                "repo_full_name": "baron",
+                "pr_number": 9,
+                "research_focus": "reset behavior",
+            }
+        )
+
+        assert result["query"] == "reset behavior"
+        assert result["chunks"] == expected_chunks
+        fake_search.assert_called_once_with("reset behavior", limit = 5)
+
+

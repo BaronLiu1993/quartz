@@ -75,3 +75,31 @@ def test_search_relevant_chunks_embeds_query_and_searches() -> None:
     assert result == [{"chunk_id": "reset"}]
     fake_embed.assert_called_once_with("reset behavior")
     fake_search.assert_called_once_with([1.0, 0.0], 3)
+
+def test_search_relevant_chunks_returns_best_seeded_chunk() -> None:
+    seeded_chunks = [
+        {
+            "chunk_id": "clock-guide",
+            "source":"clock-guide.md",
+            "text": "clock domain crossing",
+            "embedding": [0.0,1.0],
+        },
+        {
+            "chunk_id": "reset-guide",
+            "source":"reset-guide.md",
+            "text": "Counters should reset to zero before incrementing",
+            "embedding": [1.0,0.0],
+        },
+    ]
+
+    fake_collection = Mock()
+    fake_collection.find.return_value = seeded_chunks
+    fake_db = {"chunks": fake_collection}
+
+    with patch("memory.embeddings.get_mongo_db", return_value=fake_db):
+        with patch("memory.embeddings.embed_query_text", return_value=[1.0, 0.0]):
+            result = search_relevant_chunks("reset behavior", limit = 1)
+
+    assert len(result) == 1
+    assert result[0]["chunk_id"] == "reset-guide"
+    assert result[0]["text"] == "Counters should reset to zero before incrementing"
