@@ -51,7 +51,7 @@ def search_chunks_by_embedding(query_embedding: list[float], limit: int = 5)-> l
     return rank_chunks_by_similarity(query_embedding,chunks,limit)
 
 def embed_query_text(query:str)-> list[float]:
-    client = get_gemini_client
+    client = get_gemini_client()
     return embed_chunk_text(client, query)
 
 def search_relevant_chunks(query:str, limit: int = 5)-> list[dict]:

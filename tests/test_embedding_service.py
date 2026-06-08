@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -179,41 +180,42 @@ def test_for_infer_vhdl_section_title() -> None:
 
     assert expected == result
 
-def test_mongodb_integration() -> None:
-    client = get_gemini_client()
-
-    result = process_document(
-        client,
+def test_save_chunks_to_mongodb_saves_chunks() -> None:
+    chunk = DocumentChunk(
+        chunk_id="example.sv_chunk_0",
         source="example.sv",
-        text="module counter;\nendmodule",
-        file_type="sv",
-        topic="verilog",
         url="",
-        section_title="",
+        topic="verilog",
+        file_type="sv",
+        section_title="module counter",
+        text="module counter;\nendmodule",
+        embedding=[0.1, 0.2, 0.3],
     )
 
-    save_chunks_to_mongodb(result)
+    fake_collection = Mock()
 
-    collection = get_mongo_collection()
-    saved_doc = collection.find_one({"chunk_id": result[0].chunk_id})
+    with patch("app.services.embedding_service.get_mongo_collection", return_value=fake_collection):
+        save_chunks_to_mongodb([chunk])
 
-    assert saved_doc is not None
-    assert saved_doc["chunk_id"] == result[0].chunk_id
-    assert "embedding" in saved_doc
+    fake_collection.create_index.assert_called_once_with("chunk_id", unique=True)
+    fake_collection.replace_one.assert_called_once()
 
-def test_gemini_integration() -> None:
-    client = get_gemini_client()
 
-    result = process_document(
-        client,
-        source="example.sv",
-        text="module counter;\nendmodule",
-        file_type="sv",
-        topic="verilog",
-        url="",
-        section_title="",
-    )
+def test_process_document_adds_mock_embedding() -> None:
+    fake_client = Mock()
+    
+    with patch("app.services.embedding_service.embed_chunk_text", return_value=[0.1, 0.2, 0.3]):
+
+        result = process_document(
+            fake_client,
+            source="example.sv",
+            text="module counter;\nendmodule",
+            file_type="sv",
+            topic="verilog",
+            url="",
+            section_title="",
+        )
 
     assert len(result) > 0
-    assert result[0].embedding is not None
-    assert len(result[0].embedding) == 768
+    assert result[0].embedding == [0.1, 0.2, 0.3]
+

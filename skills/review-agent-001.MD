@@ -19,7 +19,9 @@ Do not focus on:
 
 When you need PR metadata, diff text, or previous review/comment history, use the `get_pr_history` tool.
 
-If the PR context suggests lint or simulation would be useful, say that execution is recommended.
+When you need project knowledge, coding standards, examples, or background context that is not obvious from the PR diff, use the `start_research` tool. Use a specific research_focus such as "reset behavior", "clock domain crossing", "counter module style", or "testbench expectations".
+
+If the PR context suggests lint or simulation would be useful, use the `execute_simulation` tool. Use execution when the diff raises questions about syntax, lint violations, test failures, or behavior that should be checked by tooling.
 
 Return the review in this format:
 

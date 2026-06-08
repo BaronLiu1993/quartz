@@ -8,7 +8,7 @@ from langgraph.graph import END
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from agents.review_agent import get_pr_history, continue_researching, get_review_graph, _load_system_review_prompt, review_pull_request
+from agents.review_agent import get_pr_history, continue_researching, get_review_graph, _load_system_review_prompt, review_pull_request, start_research, execute_simulation, REVIEW_TOOLS_BY_NAME
 
 
 def test_get_pr_history_returns_built_pr_context() -> None:
@@ -146,3 +146,49 @@ def test_load_system_review_prompt_reads_prompt_file()-> None:
     assert "No blocking issues found." in prompt
     assert "Do not invent files" in prompt
     assert "GitHub PR comment" in prompt
+    assert "start_research" in prompt
+    assert "project knowledge" in prompt
+    assert "lint violations" in prompt
+
+
+def test_start_research_searches_relevant_chunks() -> None:
+    expected_chunks = [
+        {
+            "chunk_id": "reset",
+            "source": "reset-guide.md",
+            "text": "Use active-low reset.",
+            "score": 0.98,
+        }
+    ]
+
+    with patch("agents.review_agent.search_relevant_chunks", return_value=expected_chunks) as fake_search:
+        result = start_research.invoke(
+            {
+                "repo_full_name": "baron",
+                "pr_number": 9,
+                "research_focus": "reset behavior",
+            }
+        )
+
+    assert result == {
+        "query": "reset behavior",
+        "chunks": expected_chunks,
+    }
+
+    fake_search.assert_called_once_with("reset behavior", limit=5)
+
+def test_execute_simulation_runs_lint()->None:
+    expected_result = {
+        "stdout":"lint ok",
+        "stderr":"",
+        "returncode": 0,
+    }
+
+    with patch("agents.review_agent.run_lint", return_value= expected_result) as fake_run_lint:
+        result = execute_simulation.invoke({})
+    
+    assert result == expected_result
+    fake_run_lint.assert_called_once_with()
+
+def test_review_tools_include_execute_simulation()->None:
+    assert "execute_simulation" in REVIEW_TOOLS_BY_NAME

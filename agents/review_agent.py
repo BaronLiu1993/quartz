@@ -10,6 +10,8 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from .constants import MAX_TOKENS, REVIEW_MODEL_NAME as MODEL_NAME
 from memory.conversation_memory import insert_raw_conversation_memory, RawConveresationModel
 from service.agent_service import build_pr_context
+from memory.embeddings import search_relevant_chunks
+from runners.verible_runner import run_lint
 
 def get_review_llm():
     return ChatOpenAI(model=MODEL_NAME, max_tokens=MAX_TOKENS)
@@ -33,16 +35,24 @@ def get_pr_history(pr_number: int, repo_full_name: str):
 @tool
 def start_research(pr_number: int, repo_full_name: str, research_focus: Optional[str] = None):
     """Start deeper research for a PR when the review agent needs more context."""
-    pass
+    query = research_focus or f"{repo_full_name} pull request {pr_number}"
+
+    chunks = search_relevant_chunks(query,limit=5)
+    
+    return {
+        "query":query,
+        "chunks":chunks
+    }
 
 @tool
 def execute_simulation():
     """Run lint or simulation for the current PR when execution is needed."""
-    pass
+    return run_lint()
 
 REVIEW_TOOLS = [
     get_pr_history, 
     start_research,
+    execute_simulation,
     ]
 
 REVIEW_TOOLS_BY_NAME = {}
