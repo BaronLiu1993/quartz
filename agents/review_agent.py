@@ -45,9 +45,9 @@ def start_research(pr_number: int, repo_full_name: str, research_focus: Optional
     }
 
 @tool
-def execute_simulation():
-    """Run lint or simulation for the current PR when execution is needed."""
-    return run_lint()
+def execute_simulation(target: str = "rtl/*.v rtl/*.sv"):
+    """Run Verible lint on Verilog/SystemVerilog files when execution is needed."""
+    return run_lint(target)
 
 REVIEW_TOOLS = [
     get_pr_history, 

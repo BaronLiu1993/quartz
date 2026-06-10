@@ -188,7 +188,26 @@ def test_execute_simulation_runs_lint()->None:
         result = execute_simulation.invoke({})
     
     assert result == expected_result
-    fake_run_lint.assert_called_once_with()
+    fake_run_lint.assert_called_once_with("rtl/*.v rtl/*.sv")
+
+def test_execute_simulation_runs_lint_for_target_file()->None:
+    excepted_result = {
+        "tool":"verible-verilog-lint",
+        "target":"rt1/counter.sv",
+        "command":"verible-verilog-lint rt1/counter.sv",
+        "stdout":"lint ok",
+        "stderr":"",
+        "returncode": 0,
+        "passed": True,
+    }
+
+    with patch("agents.review_agent.run_lint", return_value = excepted_result) as fake_run_lint:
+        result = execute_simulation.invoke({"target": "rtl/counter.sv"})
+    
+    assert result == excepted_result
+    fake_run_lint.assert_called_once_with("rtl/counter.sv")
+
+
 
 def test_review_tools_include_execute_simulation()->None:
     assert "execute_simulation" in REVIEW_TOOLS_BY_NAME
