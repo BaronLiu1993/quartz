@@ -1,6 +1,6 @@
 import subprocess
 
-DEFAULT_LINT_TARGET = "rt1/*.v rt1/*.sv"
+DEFAULT_LINT_TARGET = "rtl/*.v rtl/*.sv"
 def run_lint(target:str = DEFAULT_LINT_TARGET):
     """
     Runs the Verible Verilog linting tool on the specified RTL files.
