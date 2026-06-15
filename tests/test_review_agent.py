@@ -190,7 +190,7 @@ def test_execute_simulation_runs_lint()->None:
     fake_run_lint.assert_called_once_with("rtl/*.v rtl/*.sv")
 
 def test_execute_simulation_runs_lint_for_target_file()->None:
-    excepted_result = {
+    expected_result = {
         "tool":"verible-verilog-lint",
         "target":"rt1/counter.sv",
         "command":"verible-verilog-lint rt1/counter.sv",
@@ -200,11 +200,11 @@ def test_execute_simulation_runs_lint_for_target_file()->None:
         "passed": True,
     }
 
-    with patch("agents.review_agent.run_lint", return_value = excepted_result) as fake_run_lint:
+    with patch("agents.review_agent.execute_target", return_value=expected_result) as fake_execute_target:
         result = execute_simulation.invoke({"target": "rtl/counter.sv"})
     
-    assert result == excepted_result
-    fake_run_lint.assert_called_once_with("rtl/counter.sv")
+    assert result == expected_result
+    fake_execute_target.assert_called_once_with("rtl/counter.sv")
 
 
 
@@ -238,6 +238,7 @@ def test_get_verible_lint_targets_keeps_only_verilog_files() -> None:
     files = [
         "rtl/counter.sv",
         "rtl/adder.v",
+        "rtl/upper.SV",
         "docs/readme.md",
         "rtl/package.vhd",
     ]
@@ -247,6 +248,7 @@ def test_get_verible_lint_targets_keeps_only_verilog_files() -> None:
     assert result == [
         "rtl/counter.sv",
         "rtl/adder.v",
+        "rtl/upper.SV",
     ]
 
 def test_execute_simulation_lints_changed_pr_verilog_files() -> None:
@@ -260,24 +262,29 @@ def test_execute_simulation_lints_changed_pr_verilog_files() -> None:
         }
     }
 
-    counter_result = {"target": "rtl/counter.sv", "passed": True}
-    adder_result = {"target": "rtl/adder.v", "passed": True}
+    expected_result = {
+        "targets": ["rtl/counter.sv", "rtl/adder.v"],
+        "results": [
+            {"target": "rtl/counter.sv", "passed": True},
+            {"target": "rtl/adder.v", "passed": True},
+        ],
+        "passed": True,
+    }
 
     with patch("agents.review_agent.build_pr_context", return_value=fake_context) as fake_build:
-        with patch("agents.review_agent.run_lint", side_effect=[counter_result, adder_result]) as fake_run_lint:
+        with patch("agents.review_agent.execute_changed_files", return_value=expected_result) as fake_execute_changed_files:
             result = execute_simulation.invoke({
                 "repo_full_name": "octo/demo",
                 "pr_number": 7,
             })
 
     fake_build.assert_called_once_with("octo/demo", 7)
-
-    assert fake_run_lint.call_args_list[0].args == ("rtl/counter.sv",)
-    assert fake_run_lint.call_args_list[1].args == ("rtl/adder.v",)
-
-    assert result["targets"] == ["rtl/counter.sv", "rtl/adder.v"]
-    assert result["results"] == [counter_result, adder_result]
-    assert result["passed"] is True
+    fake_execute_changed_files.assert_called_once_with([
+        "rtl/counter.sv",
+        "docs/readme.md",
+        "rtl/adder.v",
+    ])
+    assert result == expected_result
 
 def test_execute_simulation_lints_changed_pr_vhdl_files() -> None:
     fake_context = {
@@ -290,24 +297,29 @@ def test_execute_simulation_lints_changed_pr_vhdl_files() -> None:
         }
     }
 
-    package_result = {"target": "rtl/package.vhd", "passed": True}
-    core_result = {"target": "rtl/core.vhdl", "passed": True}
+    expected_result = {
+        "targets": ["rtl/package.vhd", "rtl/core.vhdl"],
+        "results": [
+            {"target": "rtl/package.vhd", "passed": True},
+            {"target": "rtl/core.vhdl", "passed": True},
+        ],
+        "passed": True,
+    }
 
     with patch("agents.review_agent.build_pr_context", return_value=fake_context) as fake_build:
-        with patch("agents.review_agent.run_vhdl_lint", side_effect=[package_result, core_result]) as fake_run_vhdl_lint:
+        with patch("agents.review_agent.execute_changed_files", return_value=expected_result) as fake_execute_changed_files:
             result = execute_simulation.invoke({
                 "repo_full_name": "octo/demo",
                 "pr_number": 7,
             })
 
     fake_build.assert_called_once_with("octo/demo", 7)
-
-    assert fake_run_vhdl_lint.call_args_list[0].args == ("rtl/package.vhd",)
-    assert fake_run_vhdl_lint.call_args_list[1].args == ("rtl/core.vhdl",)
-
-    assert result["targets"] == ["rtl/package.vhd", "rtl/core.vhdl"]
-    assert result["results"] == [package_result, core_result]
-    assert result["passed"] is True
+    fake_execute_changed_files.assert_called_once_with([
+        "README.md",
+        "rtl/package.vhd",
+        "rtl/core.vhdl",
+    ])
+    assert result == expected_result
 
 
 def test_execute_simulation_returns_message_when_no_hdl_targets() -> None:
@@ -321,23 +333,26 @@ def test_execute_simulation_returns_message_when_no_hdl_targets() -> None:
         }
     }
 
-    with patch("agents.review_agent.build_pr_context", return_value=fake_context):
-        with patch("agents.review_agent.run_lint") as fake_run_lint:
-            with patch("agents.review_agent.run_vhdl_lint") as fake_run_vhdl_lint:
-                result = execute_simulation.invoke({
-                    "repo_full_name": "octo/demo",
-                    "pr_number": 7,
-                })
-
-    fake_run_lint.assert_not_called()
-    fake_run_vhdl_lint.assert_not_called()
-
-    assert result == {
+    expected_result = {
         "targets": [],
         "results": [],
         "passed": None,
-        "message": "No HDL files found for lint.",
+        "message": "No HDL targets provided.",
     }
+
+    with patch("agents.review_agent.build_pr_context", return_value=fake_context):
+        with patch("agents.review_agent.execute_changed_files", return_value=expected_result) as fake_execute_changed_files:
+            result = execute_simulation.invoke({
+                "repo_full_name": "octo/demo",
+                "pr_number": 7,
+            })
+
+    fake_execute_changed_files.assert_called_once_with([
+        "README.md",
+        "docs/readme.md",
+        "scripts/build.py",
+    ])
+    assert result == expected_result
 
 def test_get_vhdl_lint_targets_keeps_only_vhdl_files()-> None:
     files = [
@@ -368,12 +383,11 @@ def test_execute_simulation_runs_vhdl_lint_for_target_file()-> None:
         "passed": True,
     }
 
-    with patch("agents.review_agent.run_vhdl_lint", return_value=expected_result) as fake_run_vdhl_lint:
+    with patch("agents.review_agent.execute_target", return_value=expected_result) as fake_execute_target:
         result = execute_simulation.invoke({"target": "rtl/core.vhdl"})
     
     assert result == expected_result
-    
-    fake_run_vdhl_lint.assert_called_once_with("rtl/core.vhdl")
+    fake_execute_target.assert_called_once_with("rtl/core.vhdl")
 
 
 def test_execute_simulation_runs_vhdl_lint_for_uppercase_vhdl_target_file() -> None:
@@ -387,11 +401,11 @@ def test_execute_simulation_runs_vhdl_lint_for_uppercase_vhdl_target_file() -> N
         "passed": True,
     }
 
-    with patch("agents.review_agent.run_vhdl_lint", return_value=expected_result) as fake_run_vhdl_lint:
+    with patch("agents.review_agent.execute_target", return_value=expected_result) as fake_execute_target:
         result = execute_simulation.invoke({"target": "rtl/core.VHDL"})
 
     assert result == expected_result
-    fake_run_vhdl_lint.assert_called_once_with("rtl/core.VHDL")
+    fake_execute_target.assert_called_once_with("rtl/core.VHDL")
 
 def test_execute_simulation_lints_changed_pr_verilog_and_vhdl_files() -> None:
     fake_context = {
@@ -404,20 +418,25 @@ def test_execute_simulation_lints_changed_pr_verilog_and_vhdl_files() -> None:
         }
     }
 
-    verilog_result = {"target": "rtl/counter.sv", "passed": True}
-    vhdl_result = {"target": "rtl/core.vhdl", "passed": True}
+    expected_result = {
+        "targets": ["rtl/counter.sv", "rtl/core.vhdl"],
+        "results": [
+            {"target": "rtl/counter.sv", "passed": True},
+            {"target": "rtl/core.vhdl", "passed": True},
+        ],
+        "passed": True,
+    }
 
     with patch("agents.review_agent.build_pr_context", return_value=fake_context):
-        with patch("agents.review_agent.run_lint", return_value=verilog_result) as fake_run_lint:
-            with patch("agents.review_agent.run_vhdl_lint", return_value=vhdl_result) as fake_run_vhdl_lint:
-                result = execute_simulation.invoke({
-                    "repo_full_name": "octo/demo",
-                    "pr_number": 7,
-                })
+        with patch("agents.review_agent.execute_changed_files", return_value=expected_result) as fake_execute_changed_files:
+            result = execute_simulation.invoke({
+                "repo_full_name": "octo/demo",
+                "pr_number": 7,
+            })
 
-    fake_run_lint.assert_called_once_with("rtl/counter.sv")
-    fake_run_vhdl_lint.assert_called_once_with("rtl/core.vhdl")
-
-    assert result["targets"] == ["rtl/counter.sv", "rtl/core.vhdl"]
-    assert result["results"] == [verilog_result, vhdl_result]
-    assert result["passed"] is True
+    fake_execute_changed_files.assert_called_once_with([
+        "rtl/counter.sv",
+        "rtl/core.vhdl",
+        "docs/readme.md",
+    ])
+    assert result == expected_result

@@ -12,7 +12,7 @@ from memory.conversation_memory import insert_raw_conversation_memory, RawConver
 from service.agent_service import build_pr_context
 from memory.embeddings import search_relevant_chunks
 from runners.verible_runner import run_lint
-from runners.vhdl_runner import run_vhdl_lint
+from agents.execution_agent import execute_changed_files, execute_target
 
 
 def get_review_llm():
@@ -51,41 +51,14 @@ def execute_simulation(repo_full_name: Optional[str] = None, pr_number: Optional
     """Run HDL lint/analysis when execution is needed."""
 
     if target:
-        normalized_target = target.lower()
-        if normalized_target.endswith(".vhd") or normalized_target.endswith(".vhdl"):
-            return run_vhdl_lint(target)
-        
-        return run_lint(target)
+        return execute_target(target)
     
     if repo_full_name is not None and pr_number is not None:
         context = build_pr_context(repo_full_name,pr_number)
         metadata = context.get("metadata") or {}
         files_changed = metadata.get("files_changed") or []
-        verible_targets = get_verible_lint_targets(files_changed)
-        vhdl_targets = get_vhdl_lint_targets(files_changed)
-        targets = verible_targets + vhdl_targets
 
-        if not targets:
-            return {
-                "targets":[],
-                "results": [],
-                "passed": None,
-                "message": "No HDL files found for lint.",
-            }
-
-        results = []
-
-        for lint_target in verible_targets:
-            results.append(run_lint(lint_target))
-        
-        for lint_target in vhdl_targets:
-            results.append(run_vhdl_lint(lint_target))
-        
-        return {
-            "targets": targets,
-            "results": results,
-            "passed": all(result.get("passed") for result in results),
-        }
+        return execute_changed_files(files_changed)
 
     return run_lint("rtl/*.v rtl/*.sv")
 
@@ -180,7 +153,8 @@ def get_verible_lint_targets(files: list[str])-> list[str]:
     targets = []
 
     for file in files:
-        if file.endswith('.v') or file.endswith(".sv"):
+        normalized_file = file.lower()
+        if normalized_file.endswith('.v') or normalized_file.endswith(".sv"):
             targets.append(file)
     
     return targets

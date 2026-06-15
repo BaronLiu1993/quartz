@@ -11,6 +11,7 @@ brew install python@3.9
 brew install docker
 brew install verilator
 brew install verible
+brew install ghdl
 brew install gcc
 brew install make
 ```
@@ -40,7 +41,7 @@ This will:
 - `orchestrator/` - Orchestration logic
 - `parser/` - Parsing utilities
 - `router/` - Routing logic
-- `rtl/` - RTL source files (Verilog)
+- `rtl/` - RTL source files (Verilog, SystemVerilog, and VHDL)
 - `runners/` - Execution runners for simulations
 - `tests/` - Test files and testbenches
 - `Dockerfile` - MongoDB container definition
@@ -63,4 +64,4 @@ python runners/execution_runner.py
 
 **Verilator Sandbox (quartz-sandbox)**
 - Built with `make build`
-- Contains Verilator, build tools, and testbench environment
+- Contains Verilator, GHDL, build tools, and testbench environment
