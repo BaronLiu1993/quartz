@@ -78,6 +78,14 @@ def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
             page += 1
     return filenames
 
+def post_pr_comment(repo_full_name:str, pr_number:int, body:str) -> dict[str,Any]:
+    with httpx.Client(timeout=HTTP_TIMEOUT,headers =GITHUB_HEADERS) as client:
+        response = client.post(
+            f"{GITHUB_API}/repos/{repo_full_name}/issues/{pr_number}/comments",json={"body": body}
+        )
+        response.raise_for_status()
+        return response.json()
+
 def session_id_for(repo_full_name: str, pr_number: int) -> str:
     return f"gh:{repo_full_name}#{pr_number}"
 
@@ -131,6 +139,22 @@ def save_pr_metadata(
         )
     )
 
+def trigger_review_agent(repo_full_name:str, pr_number:int):
+    from agents.review_agent import review_pull_request
+    try:
+        review_text = review_pull_request(repo_full_name, pr_number)
+    except Exception:
+        logger.exception("Failed to generate PR review")
+        return
+
+    session = session_id_for(repo_full_name,pr_number)
+    record_text(session,"response", review_text)
+
+    try:
+        post_pr_comment(repo_full_name,pr_number,review_text)
+    except Exception:
+        logger.exception("Failed to post PR review comment")
+
 def handle_pull_request(payload: dict[str, Any]) -> None:
     action = payload.get("action")
     if action not in {"opened", "synchronize", "reopened", "closed"}:
@@ -147,6 +171,7 @@ def handle_pull_request(payload: dict[str, Any]) -> None:
 
     record_text(session, "code", diff_text)
     save_pr_metadata(pr, repo_full_name, files, f"pull_request.{action}", truncated)
+    trigger_review_agent(repo_full_name,number )
 
 def handle_pull_request_review(payload: dict[str, Any]) -> None:
     if payload.get("action") != "submitted":
@@ -190,3 +215,4 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
     except Exception as e:
         logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
+

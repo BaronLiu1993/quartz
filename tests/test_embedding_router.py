@@ -7,7 +7,7 @@ from unittest.mock import patch
 from app.services.embedding_service import DocumentChunk
 from app.routers.embedding_router import normalize_file_type
 from fastapi.testclient import TestClient
-from app.main import app
+from main import app
 
 
 def test_normalize_file_type() -> None:
@@ -17,11 +17,11 @@ def test_normalize_file_type() -> None:
 
 client = TestClient(app)
 
-def test_root_route() -> None:
-    response = client.get("/")
+def test_health_route() -> None:
+    response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"message": "Hardware Assistant API is running"}
+    assert response.json() == {"status": "ok"}
 
 def test_process_document_rejects_unsupported_file()-> None:
     request_body = {
@@ -35,7 +35,7 @@ def test_process_document_rejects_unsupported_file()-> None:
         "return_embeddings": False,
     }
 
-    response = client.post("/embeddings/process", json=request_body)
+    response = client.post("/api/v1/embeddings/process", json=request_body)
 
     assert response.status_code == 400
 
@@ -71,7 +71,7 @@ def test_process_document_success(
         "return_embeddings": False,
     }
 
-    response = client.post("/embeddings/process", json=request_body)
+    response = client.post("/api/v1/embeddings/process", json=request_body)
 
     assert response.status_code == 200
 

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pymongo import MongoClient
+from memory.config import get_mongo_db
 
 load_dotenv()
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".v", ".sv", ".vhd", ".vhdl"}
@@ -287,9 +288,9 @@ def deduplicate_chunks(chunks: list[DocumentChunk]) -> list[DocumentChunk]:
     return list(unique_chunks.values())
 
 def get_mongo_collection():
-    mongo_uri = os.getenv("MONGO_DB_URI_STRING")
-    client = MongoClient(mongo_uri)
-    return client["hardware_assistant"]["chunks"]
+    db = get_mongo_db()
+    return db["chunks"]
+   
 
 def save_chunks_to_mongodb(chunks: list[DocumentChunk]) -> None:
     collection = get_mongo_collection()

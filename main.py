@@ -1,8 +1,12 @@
 import logging
 import os
-from fastapi import FastAPI
 
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI
 from router.pr_router import router as pr_router
+from app.routers.embedding_router import router as embedding_router
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -11,8 +15,9 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 
-app = FastAPI(title="quartz")
+app = FastAPI(title="hardware Code Assistant")
 app.include_router(pr_router, prefix="/api/v1")
+app.include_router(embedding_router, prefix = "/api/v1")
 
 @app.get("/health")
 def health() -> dict[str, str]:
