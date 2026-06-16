@@ -4,7 +4,7 @@ from kombu import Queue
 app = Celery(
     "quartz",
     broker="amqp://guest:guest@localhost:5672//",
-    include=["async_queue.pr_task"],
+    include=["async_queue.pr_task", "async_queue.ingest_codebase"],
 )
 
 app.conf.task_queues = (
