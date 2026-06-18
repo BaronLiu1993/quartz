@@ -23,7 +23,7 @@ def test_decide_pr_workflow_returns_structured_llm_decision() -> None:
     fake_orchestrator = Mock()
     fake_orchestrator.invoke.return_value = expected_decision
 
-    with patch("agents.orchestrator_agent.orchestrator", fake_orchestrator):
+    with patch("agents.orchestrator_agent.get_orchestrator", return_value=fake_orchestrator):
         result = decide_pr_workflow(pr_context)
 
     assert result == expected_decision

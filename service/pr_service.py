@@ -139,19 +139,50 @@ def save_pr_metadata(
         )
     )
 
-def trigger_review_agent(repo_full_name:str, pr_number:int):
+def trigger_review_agent(repo_full_name: str, pr_number: int):
     from agents.review_agent import review_pull_request
+    from service.agent_service import build_pr_context
+    from agents.orchestrator_agent import plan_pr_workflow
+
+    pr_context = build_pr_context(repo_full_name, pr_number)
+    workflow_plan = plan_pr_workflow(pr_context)
+    steps = workflow_plan["steps"]
+
+    decision = workflow_plan.get("decision")
+    if decision is not None and decision.reason:
+        record_text(
+            session_id_for(repo_full_name, pr_number),
+            "response",
+            f"Orchestrator decision: {decision.reason}",
+        )
+
+    if "execution" in steps:
+        from agents.execution_agent import execute_changed_files
+
+        metadata = pr_context.get("metadata") or {}
+        files_changed = metadata.get("files_changed") or []
+        execution_result = execute_changed_files(files_changed)
+        record_text(
+            session_id_for(repo_full_name, pr_number),
+            "response",
+            f"Execution result: {execution_result}",
+        )
+
+    if "review" not in steps:
+        logger.info("Orchestrator skipped review | repo=%s pr=%s", repo_full_name, pr_number)
+        return
+    
     try:
         review_text = review_pull_request(repo_full_name, pr_number)
     except Exception:
         logger.exception("Failed to generate PR review")
         return
 
-    session = session_id_for(repo_full_name,pr_number)
-    record_text(session,"response", review_text)
+    session = session_id_for(repo_full_name, pr_number)
+    record_text(session, "response", review_text)
 
     try:
-        post_pr_comment(repo_full_name,pr_number,review_text)
+        post_pr_comment(repo_full_name, pr_number, review_text)
     except Exception:
         logger.exception("Failed to post PR review comment")
 

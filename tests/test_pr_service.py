@@ -163,12 +163,18 @@ def test_trigger_review_agent_still_records_when_github_post_fails()-> None:
     fake_review_pull_request = Mock(return_value = "AI review text")
     fake_record_text = Mock()
     fake_post_pr_comment = Mock(side_effect=RuntimeError("github down"))
+    fake_build_pr_context = Mock(return_value={"repo_full_name": "baron", "pr_number": 9})
+    fake_plan_pr_workflow = Mock(return_value={"steps": ["review"]})
 
     with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
-        with patch("service.pr_service.record_text", fake_record_text):
-            with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                trigger_review_agent("baron", 9)
+        with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+            with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                with patch("service.pr_service.record_text", fake_record_text):
+                    with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                        trigger_review_agent("baron", 9)
     fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_build_pr_context.assert_called_once_with("baron", 9)
+    fake_plan_pr_workflow.assert_called_once_with({"repo_full_name": "baron", "pr_number": 9})
     fake_record_text.assert_called_with(
         "gh:baron#9",
         "response",
@@ -291,13 +297,19 @@ def test_trigger_review_agent_calls_review_pull_request()-> None:
     fake_review_pull_request = Mock(return_value="AI review text")
     fake_record_text = Mock()
     fake_post_pr_comment = Mock()
+    fake_build_pr_context = Mock(return_value={"repo_full_name": "baron", "pr_number": 9})
+    fake_plan_pr_workflow = Mock(return_value={"steps": ["review"]})
 
     with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
-        with patch("service.pr_service.record_text", fake_record_text):
-            with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                trigger_review_agent("baron", 9)
+        with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+            with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                with patch("service.pr_service.record_text", fake_record_text):
+                    with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                        trigger_review_agent("baron", 9)
 
     fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_build_pr_context.assert_called_once_with("baron", 9)
+    fake_plan_pr_workflow.assert_called_once_with({"repo_full_name": "baron", "pr_number": 9})
     fake_record_text.assert_called_once_with("gh:baron#9","response", "AI review text")
     fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text")
 
@@ -325,12 +337,155 @@ def test_trigger_review_agent_does_not_record_or_post_when_review_generation_fai
     fake_review_pull_request = Mock(side_effect=RuntimeError("openai down"))
     fake_record_text = Mock()
     fake_post_pr_comment = Mock()
+    fake_build_pr_context = Mock(return_value={"repo_full_name": "baron", "pr_number": 9})
+    fake_plan_pr_workflow = Mock(return_value={"steps": ["review"]})
 
     with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
-        with patch("service.pr_service.record_text", fake_record_text):
-            with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                trigger_review_agent("baron", 9)
+        with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+            with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                with patch("service.pr_service.record_text", fake_record_text):
+                    with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                        trigger_review_agent("baron", 9)
 
     fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_build_pr_context.assert_called_once_with("baron", 9)
+    fake_plan_pr_workflow.assert_called_once_with({"repo_full_name": "baron", "pr_number": 9})
     fake_record_text.assert_not_called()
     fake_post_pr_comment.assert_not_called()
+
+def test_trigger_review_agent_skips_review_when_orchestrator_excludes_review() -> None:
+    fake_review_pull_request = Mock()
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock()
+    fake_build_pr_context = Mock(return_value={"repo_full_name": "baron", "pr_number": 9})
+    fake_plan_pr_workflow = Mock(return_value={"steps": []})
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+            with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                with patch("service.pr_service.record_text", fake_record_text):
+                    with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                        trigger_review_agent("baron", 9)
+
+    fake_build_pr_context.assert_called_once_with("baron", 9)
+    fake_plan_pr_workflow.assert_called_once_with(
+        {"repo_full_name": "baron", "pr_number": 9}
+    )
+    fake_review_pull_request.assert_not_called()
+    fake_record_text.assert_not_called()
+    fake_post_pr_comment.assert_not_called()
+
+def test_trigger_review_agent_runs_execution_when_orchestrator_includes_execution() -> None:
+    fake_review_pull_request = Mock(return_value="AI review text")
+    fake_execute_changed_files = Mock(return_value={
+        "targets": ["rtl/counter.sv"],
+        "results": [],
+        "passed": True,
+    })
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock()
+
+    pr_context = {
+        "repo_full_name": "baron",
+        "pr_number": 9,
+        "metadata": {
+        "files_changed": ["rtl/counter.sv"],
+        },
+    }
+
+    fake_build_pr_context = Mock(return_value=pr_context)
+    fake_plan_pr_workflow = Mock(return_value={"steps": ["execution", "review"]})
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        with patch("agents.execution_agent.execute_changed_files", fake_execute_changed_files):
+            with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+                with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                    with patch("service.pr_service.record_text", fake_record_text):
+                        with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                            trigger_review_agent("baron", 9)
+
+    fake_execute_changed_files.assert_called_once_with(["rtl/counter.sv"])
+    fake_review_pull_request.assert_called_once_with("baron", 9)
+    fake_record_text.assert_any_call("gh:baron#9", "response", "AI review text")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text")
+
+def test_trigger_review_agent_records_execution_result_when_execution_runs() -> None:
+    fake_review_pull_request = Mock(return_value="AI review text")
+
+    execution_result = {
+        "targets": ["rtl/counter.sv"],
+        "passed": True,
+    }
+    fake_execute_changed_files = Mock(return_value=execution_result)
+
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock()
+
+    pr_context = {
+        "repo_full_name": "baron",
+        "pr_number": 9,
+        "metadata": {
+            "files_changed": ["rtl/counter.sv"],
+        },
+    }
+
+    fake_build_pr_context = Mock(return_value=pr_context)
+    fake_plan_pr_workflow = Mock(return_value={"steps": ["execution", "review"]})
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        with patch("agents.execution_agent.execute_changed_files", fake_execute_changed_files):
+            with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+                with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                    with patch("service.pr_service.record_text", fake_record_text):
+                        with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                            trigger_review_agent("baron", 9)
+
+    fake_execute_changed_files.assert_called_once_with(["rtl/counter.sv"])
+
+    assert fake_record_text.call_count == 2
+
+    fake_record_text.assert_any_call(
+        "gh:baron#9",
+        "response",
+        f"Execution result: {execution_result}",
+    )
+
+    fake_record_text.assert_any_call(
+        "gh:baron#9",
+        "response",
+        "AI review text",
+    )
+
+def test_trigger_review_agent_records_orchestrator_decision_reason() -> None:
+    fake_review_pull_request = Mock(return_value="AI review text")
+    fake_record_text = Mock()
+    fake_post_pr_comment = Mock()
+
+    pr_context = {
+        "repo_full_name": "baron",
+        "pr_number": 9,
+        "metadata": {
+            "files_changed": ["rtl/counter.sv"],
+        },
+    }
+
+    fake_build_pr_context = Mock(return_value=pr_context)
+    fake_plan_pr_workflow = Mock(
+        return_value={
+            "steps": ["review"],
+            "decision": Mock(reason="Only review is needed."),
+        }
+    )
+
+    with patch("agents.review_agent.review_pull_request", fake_review_pull_request):
+        with patch("service.agent_service.build_pr_context", fake_build_pr_context):
+            with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
+                with patch("service.pr_service.record_text", fake_record_text):
+                    with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
+                        trigger_review_agent("baron", 9)
+
+    fake_record_text.assert_any_call(
+        "gh:baron#9",
+        "response",
+        "Orchestrator decision: Only review is needed.",
+    )
