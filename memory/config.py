@@ -6,7 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # MongoDB Configuration
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://root:example@localhost:27017/quartz?authSource=admin")
+MONGO_URI = (
+    os.getenv("MONGO_URI")
+    or os.getenv("MONGO_DB_URI_STRING")
+    or "mongodb://root:example@localhost:27017/quartz?authSource=admin"
+)
 DB_NAME = "memory"
 
 def get_mongo_client():

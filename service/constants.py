@@ -1,5 +1,9 @@
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 GITHUB_WEBHOOK_SECRET = os.environ["GITHUB_WEBHOOK_SECRET"]
 GITHUB_API = "https://api.github.com"

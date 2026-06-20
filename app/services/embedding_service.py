@@ -315,7 +315,8 @@ def prepare_chunk_text(chunk: DocumentChunk) -> str:
     )
 
 def get_gemini_client():
-    client = genai.Client(api_key=os.getenv("Gemini_API_Key"))
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("Gemini_API_Key")
+    client = genai.Client(api_key=api_key)
     return client
 
 
