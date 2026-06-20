@@ -1,6 +1,8 @@
 import base64
+import os
 
 import httpx
+from dotenv import load_dotenv
 
 from agents.execution_agent import is_verilog_target, is_vhdl_target
 from app.services.embedding_service import (
@@ -8,6 +10,22 @@ from app.services.embedding_service import (
     process_document,
     save_chunks_to_mongodb,
 )
+
+load_dotenv()
+
+
+def get_github_headers() -> dict[str, str]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "quartz-ingestion",
+    }
+
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    return headers
 
 
 def is_md_file(path: str) -> bool:
@@ -41,7 +59,7 @@ def fetch_github_file_text(repo_full_name: str, path: str, ref: str) -> str:
     """Fetch one GitHub file at a branch/tag/SHA and return decoded text."""
     url = f"https://api.github.com/repos/{repo_full_name}/contents/{path}"
 
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0, headers=get_github_headers()) as client:
         response = client.get(url, params={"ref": ref})
         response.raise_for_status()
         data = response.json()
@@ -58,7 +76,7 @@ def fetch_github_file_text(repo_full_name: str, path: str, ref: str) -> str:
 def fetch_github_repo_tree(repo_full_name: str, ref: str) -> list[str]:
     url = f"https://api.github.com/repos/{repo_full_name}/git/trees/{ref}"
 
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0, headers=get_github_headers()) as client:
         response = client.get(url, params={"recursive": "1"})
         response.raise_for_status()
         data = response.json()
