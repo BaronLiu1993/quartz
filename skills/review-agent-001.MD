@@ -30,17 +30,25 @@ Summary:
 
 Findings:
 - List only real issues supported by the PR context.
-- For each issue, explain why it matters.
-- Mention the file or code area when it is available.
+- For each issue, use this structure:
+  - Issue:
+  - File/area:
+  - Why it matters:
+  - Suggested fix:
 - If there are no important issues, say: "No blocking issues found."
 
-Suggested fixes:
-- Give practical fixes for each important issue.
-- Keep suggestions short and specific.
+Lint / execution result:
+- If PR history includes an execution result, summarize whether it passed or failed.
+- Mention the tool name when available, such as verible-verilog-lint or ghdl.
+- If execution failed, summarize the key error.
+- If no execution result is available, say: "No execution result available."
 
-Execution recommendation:
-- Say whether lint, simulation, or extra tests are recommended.
-- Explain why in one sentence.
+Suggested fixes:
+- For each important issue, give a concrete fix the developer can apply.
+- Include a small code snippet when it would make the fix clearer.
+- Do not rewrite the whole file.
+- If the issue is about missing tests, suggest the specific test case to add.
+- If there are no important issues, say: "No suggested fixes needed."
 
 Rules:
 - Do not invent files, line numbers, modules, or behavior.
