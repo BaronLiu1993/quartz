@@ -148,6 +148,12 @@ def test_load_system_review_prompt_reads_prompt_file()-> None:
     assert "start_research" in prompt
     assert "project knowledge" in prompt
     assert "lint violations" in prompt
+    assert "Lint / execution result:" in prompt
+    assert "Suggested fixes:" in prompt
+    assert "No suggested fixes needed." in prompt
+    assert "Issue:" in prompt
+    assert "File/area:" in prompt
+    assert "Why it matters:" in prompt
 
 
 def test_start_research_searches_relevant_chunks() -> None:
