@@ -2,9 +2,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 import httpx
+import re
 
 from memory.conversation_memory import (
     PRMetadataModel,
@@ -173,18 +175,41 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
         return
     
     try:
-        review_text = review_pull_request(repo_full_name, pr_number)
+        review = review_pull_request(repo_full_name, pr_number)
     except Exception:
         logger.exception("Failed to generate PR review")
         return
 
     session = session_id_for(repo_full_name, pr_number)
-    record_text(session, "response", review_text)
+    record_text(session, "response", review.summary)
 
     try:
-        post_pr_comment(repo_full_name, pr_number, review_text)
+        post_pr_comment(repo_full_name, pr_number, review.summary)
     except Exception:
-        logger.exception("Failed to post PR review comment")
+        logger.exception("Failed to post PR summary comment")
+    
+    #SHA is Git's name for the unique fingerprint of one commit
+    latest_pr_commit_sha = (pr_context.get("metadata") or {}).get("head_sha")
+
+    if latest_pr_commit_sha is None:
+        logger.warning(
+            "Skipping inline PR comments because the latest PR commit SHA is unavailable"
+        )
+        return
+
+    for comment in review.comments:
+        formatted_comment_body = format_inline_comment_body(comment.body,comment.replacement_code)
+        try:
+            post_pr_inline_comment(
+                repo_full_name,
+                pr_number,
+                latest_pr_commit_sha,
+                comment.path,
+                comment.line,
+                formatted_comment_body,
+            )
+        except Exception:
+            logger.exception("Failed to post inline PR review comment")
 
 def handle_pull_request(payload: dict[str, Any]) -> None:
     action = payload.get("action")
@@ -247,3 +272,83 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
         logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
 
+def post_pr_inline_comment(repo_full_name:str, pr_number:int, commit_id:str, path:str, line:int, body:str)-> dict[str,Any]:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers= GITHUB_HEADERS) as client:
+        response = client.post(
+            f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/comments",
+            json={
+                "body": body,
+                "commit_id": commit_id,
+                "path": path,
+                "line": line,
+                "side":"RIGHT",
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+
+def format_inline_comment_body(body:str, replacement_code:str | None,)->str:
+    if not replacement_code:
+        return body
+    
+    return f"""{body}
+
+```suggestion
+{replacement_code.rstrip()}
+```"""
+#suggestion is wrote here, since github sees that special suggestion block and displays the code as an applyable suggestion
+
+def get_changed_lines_by_file(diff_text: str) -> dict[str, set[int]]:
+    changed_lines: dict[str, set[int]] = {}
+    current_path: str | None = None
+    new_line_number: int | None = None
+
+    for diff_line in diff_text.splitlines():
+        # Reset the file state when the diff begins another file.
+        if diff_line.startswith("diff --git "):
+            current_path = None
+            new_line_number = None
+            continue
+
+        # Record the path of the new version of the changed file.
+        if diff_line.startswith("+++ b/"):
+            current_path = diff_line.removeprefix("+++ b/")
+            changed_lines.setdefault(current_path, set())
+            continue
+
+        # Skip file metadata because it is not a line of code.
+        if diff_line.startswith("+++ /dev/null") or diff_line.startswith("--- "):
+            continue
+
+        # Read the new-file starting line from a hunk header such as @@ -3,13 +3,16 @@.
+        if diff_line.startswith("@@"):
+            match = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", diff_line)
+
+            # Only update the counter when the hunk header has the expected format.
+            if match:
+                new_line_number = int(match.group(1))
+            continue
+
+        # Ignore lines until both a target file and its new-file line number are known.
+        if current_path is None or new_line_number is None:
+            continue
+
+        # Added lines are valid locations for an inline PR comment.
+        if diff_line.startswith("+"):
+            changed_lines[current_path].add(new_line_number)
+            new_line_number += 1
+        # Deleted lines and the no-newline marker do not exist in the new file.
+        elif diff_line.startswith("-") or diff_line.startswith("\\"):
+            continue
+        else:
+            # Unchanged context still occupies a line in the new file.
+            new_line_number += 1
+
+    return changed_lines
+
+def is_valid_inline_comment_location(
+    path: str,
+    line: int,
+    changed_lines: dict[str, set[int]],
+) -> bool:
+    return line in changed_lines.get(path, set())
