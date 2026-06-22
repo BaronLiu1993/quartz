@@ -14,6 +14,17 @@ from memory.embeddings import search_relevant_chunks
 from runners.verible_runner import run_lint
 from agents.execution_agent import execute_changed_files, execute_target
 
+class InlineReviewComment(BaseModel):
+    path: str
+    line: int
+    body: str
+    start_line: int | None = None
+    replacement_code: str | None = None
+
+class PullRequestReview(BaseModel):
+    summary: str
+    comments: list[InlineReviewComment]
+
 
 def get_review_llm():
     return ChatOpenAI(model=MODEL_NAME, max_tokens=MAX_TOKENS)
@@ -140,7 +151,7 @@ def review_pull_request(repo_full_name:str, pr_number:int):
     )
 
     review_state = graph.invoke({"messages": [user_message]})
-    return extract_final_review_text(review_state)
+    return extract_structured_review(review_state)
 
 def extract_final_review_text(review_state:dict) -> str:
     messages = review_state.get("messages", [])
@@ -168,3 +179,14 @@ def get_vhdl_lint_targets(files: list[str])-> list[str]:
             targets.append(file)
     
     return targets
+
+def extract_structured_review(review_state: dict)->PullRequestReview:
+    messages = review_state.get("messages",[])
+
+    if not messages:
+        return PullRequestReview(summary="", comments=[])
+    
+    final_message = messages[-1]
+
+    return PullRequestReview.model_validate_json(final_message.content)
+
