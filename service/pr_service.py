@@ -196,8 +196,28 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
             "Skipping inline PR comments because the latest PR commit SHA is unavailable"
         )
         return
+    
+    code_entries = pr_context.get("code_entries") or []
+
+    diff_parts = []
+
+    for entry in code_entries:
+        diff_parts.append(entry.get("raw_conversation",""))
+    
+    diff_text = "\n".join(diff_parts)
+
+    changed_lines = get_changed_lines_by_file(diff_text)
 
     for comment in review.comments:
+        if not is_valid_inline_comment_location(
+            comment.path,
+            comment.line,
+            changed_lines,
+            start_line=comment.start_line,
+        ):
+            logger.warning("skipping inline PR comment outside the changed diff: %s:%s",comment.path,comment.line)
+            continue
+
         formatted_comment_body = format_inline_comment_body(comment.body,comment.replacement_code)
         try:
             post_pr_inline_comment(
@@ -207,6 +227,7 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
                 comment.path,
                 comment.line,
                 formatted_comment_body,
+                start_line=comment.start_line,
             )
         except Exception:
             logger.exception("Failed to post inline PR review comment")
@@ -272,17 +293,22 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
         logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
 
-def post_pr_inline_comment(repo_full_name:str, pr_number:int, commit_id:str, path:str, line:int, body:str)-> dict[str,Any]:
+def post_pr_inline_comment(repo_full_name:str, pr_number:int, commit_id:str, path:str, line:int, body:str, start_line:int | None = None)-> dict[str,Any]:
+    payload = {
+            "body": body,
+            "commit_id": commit_id,
+            "path": path,
+            "line": line,
+            "side":"RIGHT",
+            }
+    if start_line is not None:
+        payload["start_line"] = start_line
+        payload["start_side"] = "RIGHT"
+    
     with httpx.Client(timeout=HTTP_TIMEOUT, headers= GITHUB_HEADERS) as client:
         response = client.post(
             f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/comments",
-            json={
-                "body": body,
-                "commit_id": commit_id,
-                "path": path,
-                "line": line,
-                "side":"RIGHT",
-            }
+            json= payload
         )
         response.raise_for_status()
         return response.json()
@@ -350,5 +376,11 @@ def is_valid_inline_comment_location(
     path: str,
     line: int,
     changed_lines: dict[str, set[int]],
+    start_line: int | None = None,
 ) -> bool:
-    return line in changed_lines.get(path, set())
+    file_changed_lines = changed_lines.get(path, set())
+
+    if line not in file_changed_lines:
+        return False
+
+    return start_line is None or start_line in file_changed_lines

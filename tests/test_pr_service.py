@@ -323,6 +323,33 @@ def test_trigger_review_agent_calls_review_pull_request()-> None:
         "repo_full_name": "baron",
         "pr_number": 9,
         "metadata": {"head_sha": "abc123"},
+        "code_entries": [
+            {
+                "raw_conversation": """\
+diff --git a/examples/hdl/counter.sv b/examples/hdl/counter.sv
+--- a/examples/hdl/counter.sv
++++ b/examples/hdl/counter.sv
+@@ -3,13 +3,16 @@ module counter #(
+) (
+    input  logic             clk,
+    input  logic             reset_n,
++    input  logic             clear,
+    input  logic             enable,
+    output logic [WIDTH-1:0] count
+);
+
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            count <= '0;
++        end else if (clear) begin
++            count <= '0;
+        end else if (enable) begin
+            count <= count + 1'b1;
+        end
+    end
+"""
+            }
+        ],
     }
     fake_build_pr_context = Mock(return_value=pr_context)
     fake_plan_pr_workflow = Mock(return_value={"steps": ["review"]})
@@ -354,6 +381,7 @@ def test_trigger_review_agent_calls_review_pull_request()-> None:
         "examples/hdl/counter.sv",
         14,
         expected_inline_comment_body,
+        start_line=None,
     )
 
 
@@ -643,6 +671,44 @@ def test_post_pr_inline_comment_posts_inline_comment_to_github() -> None:
 
     fake_response.raise_for_status.assert_called_once()
 
+
+def test_post_pr_inline_comment_includes_start_line_for_multi_line_comment() -> None:
+    fake_response = Mock()
+    fake_response.json.return_value = {"id": 789}
+
+    fake_client = Mock()
+    fake_client.post.return_value = fake_response
+
+    fake_context = MagicMock()
+    fake_context.__enter__.return_value = fake_client
+    fake_context.__exit__.return_value = None
+
+    with patch("service.pr_service.httpx.Client", return_value=fake_context):
+        result = post_pr_inline_comment(
+            "octo/demo",
+            7,
+            "abc123",
+            "examples/hdl/counter.sv",
+            18,
+            "Replace this whole block.",
+            start_line=10,
+        )
+
+    assert result == {"id": 789}
+    fake_client.post.assert_called_once_with(
+        "https://api.github.com/repos/octo/demo/pulls/7/comments",
+        json={
+            "body": "Replace this whole block.",
+            "commit_id": "abc123",
+            "path": "examples/hdl/counter.sv",
+            "start_line": 10,
+            "start_side": "RIGHT",
+            "line": 18,
+            "side": "RIGHT",
+        },
+    )
+    fake_response.raise_for_status.assert_called_once()
+
 def test_format_inline_comment_body_returns_normal_body_without_replacement() -> None:
     result = format_inline_comment_body(
         "Add a test for `clear`.",
@@ -717,4 +783,18 @@ def test_is_valid_inline_comment_location_requires_a_changed_line() -> None:
         "docs/readme.md",
         14,
         changed_lines,
+    ) is False
+
+    assert is_valid_inline_comment_location(
+        "examples/hdl/counter.sv",
+        15,
+        changed_lines,
+        start_line=14,
+    ) is True
+
+    assert is_valid_inline_comment_location(
+        "examples/hdl/counter.sv",
+        15,
+        changed_lines,
+        start_line=50,
     ) is False

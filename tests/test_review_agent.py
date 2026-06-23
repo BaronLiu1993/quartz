@@ -166,6 +166,7 @@ def test_load_system_review_prompt_reads_prompt_file()-> None:
     assert '"summary"' in prompt
     assert '"comments"' in prompt
     assert '"path"' in prompt
+    assert '"start_line"' in prompt
     assert '"line"' in prompt
     assert '"body"' in prompt
     assert '"replacement_code"' in prompt
