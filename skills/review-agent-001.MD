@@ -32,6 +32,7 @@ Use exactly this shape:
   "comments": [
     {
       "path": "changed/file.sv",
+      "start_line": null,
       "line": 14,
       "body": "Short explanation of the issue.",
       "replacement_code": "Exact code that should replace the commented line, or null."
@@ -43,6 +44,9 @@ Rules for comments:
 - Add a comment only for a real code-specific issue.
 - The path must be a changed PR file.
 - The line must be a changed line in the new version of the PR code.
+- Set start_line only when replacement_code replaces multiple changed lines.
+- Use null for start_line when the suggestion replaces only one line.
+- When start_line is provided, it must be a changed line before or equal to line.
 - Keep each body concise and helpful.
 - Set replacement_code only when you can provide a safe, exact code replacement.
 - Use null when the suggestion is not an exact code replacement, such as adding tests or explaining behavior.
