@@ -14,5 +14,5 @@ module counter #(
             count <= count + 1'b1;
         end
     end
-
+    assign broken_signal = ;
 endmodule
