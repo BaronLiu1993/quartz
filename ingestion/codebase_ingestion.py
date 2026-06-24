@@ -9,6 +9,8 @@ from app.services.embedding_service import (
     save_chunks_to_mongodb,
 )
 
+from service.constants import GITHUB_HEADERS
+
 
 def is_md_file(path: str) -> bool:
     normalized_md = path.lower()
@@ -41,7 +43,8 @@ def fetch_github_file_text(repo_full_name: str, path: str, ref: str) -> str:
     """Fetch one GitHub file at a branch/tag/SHA and return decoded text."""
     url = f"https://api.github.com/repos/{repo_full_name}/contents/{path}"
 
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0, headers= GITHUB_HEADERS) as client:
+        
         response = client.get(url, params={"ref": ref})
         response.raise_for_status()
         data = response.json()

@@ -159,16 +159,22 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
         )
 
     if "execution" in steps:
-        from agents.execution_agent import execute_changed_files
+        from service.pr_execution_service import execute_pull_request_files
 
         metadata = pr_context.get("metadata") or {}
         files_changed = metadata.get("files_changed") or []
-        execution_result = execute_changed_files(files_changed)
-        record_text(
-            session_id_for(repo_full_name, pr_number),
-            "response",
-            f"Execution result: {execution_result}",
-        )
+        pr_commit_sha = metadata.get("head_sha") 
+
+        if pr_commit_sha is not None:
+            execution_result = execute_pull_request_files(repo_full_name, pr_commit_sha, files_changed)
+            record_text(
+                session_id_for(repo_full_name, pr_number),
+                "response",
+                f"Execution result: {execution_result}",
+            )
+        else:
+            logger.warning("Execution was skipped due to the PR having no Head commit ID")
+            
 
     if "review" not in steps:
         logger.info("Orchestrator skipped review | repo=%s pr=%s", repo_full_name, pr_number)
