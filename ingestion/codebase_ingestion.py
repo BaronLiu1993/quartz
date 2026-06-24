@@ -76,7 +76,7 @@ def fetch_github_file_text(repo_full_name: str, path: str, ref: str) -> str:
 def fetch_github_repo_tree(repo_full_name: str, ref: str) -> list[str]:
     url = f"https://api.github.com/repos/{repo_full_name}/git/trees/{ref}"
 
-    with httpx.Client(timeout=30.0, headers=GITHUB_HEADERS) as client:
+    with httpx.Client(timeout=30.0, headers=get_github_headers()) as client:
         response = client.get(url, params={"recursive": "1"})
         response.raise_for_status()
         data = response.json()
