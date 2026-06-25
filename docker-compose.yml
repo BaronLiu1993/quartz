@@ -13,6 +13,17 @@ services:
     depends_on:
       - mongodb
       - rabbitmq
+  
+  worker:
+    build: .
+    container_name: quartz-worker
+    restart: unless-stopped
+    command: celery -A async_queue.config.app worker --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+      - rabbitmq
 
   mongodb:
     image: mongo:6.0
