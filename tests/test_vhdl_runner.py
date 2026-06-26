@@ -11,10 +11,9 @@ def test_run_vhdl_lint_returns_structured_result()-> None:
         result = run_vhdl_lint("rtl/core.vhdl")
     
     fake_run.assert_called_once_with(
-        "ghdl -a rtl/core.vhdl",
-        shell = True,
-        capture_output = True,
-        text = True,
+        ["ghdl", "-a", "rtl/core.vhdl"],
+        capture_output=True,
+        text=True,
     )
 
     assert result == {
