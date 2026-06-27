@@ -18,4 +18,5 @@ module counter #(
         end
     end
 
+    assign broken_signal = ;
 endmodule
