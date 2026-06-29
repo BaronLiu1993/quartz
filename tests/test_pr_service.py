@@ -13,6 +13,8 @@ from service.constants import GITHUB_WEBHOOK_SECRET
 from service.pr_service import verify_signature,route_event,handle_pull_request,handle_pull_request_review,handle_issue_comment,session_id_for,record_text,trigger_review_agent,post_pr_comment, post_pr_inline_comment, format_inline_comment_body, get_changed_lines_by_file, is_valid_inline_comment_location
 from agents.review_agent import InlineReviewComment, PullRequestReview
 
+TEST_GITHUB_HEADERS = {"Authorization": "Bearer app-token"}
+
 def test_verify_signature_rejects_missing_signature()-> None:
     body = b'{"action":"opened"}'
 
@@ -103,6 +105,7 @@ def test_handle_pull_request_ignores_unsupported_action() -> None:
 def test_handle_pull_request_processes_supported_action() -> None:
     payload = {
         "action": "opened",
+        "installation": {"id": 123},
         "repository": {"full_name": "octo/demo",},
         "pull_request": {
             "number": 7,
@@ -134,17 +137,20 @@ def test_handle_pull_request_processes_supported_action() -> None:
     fake_record_text = Mock()
     fake_save_pr_metadata = Mock()
     fake_trigger_review_agent = Mock()
+    fake_get_installation_headers = Mock(return_value=TEST_GITHUB_HEADERS)
 
-    with patch("service.pr_service.fetch_pr_diff", fake_fetch_pr_diff):
-        with patch("service.pr_service.fetch_pr_files", fake_fetch_pr_files):
-            with patch("service.pr_service.record_text", fake_record_text):
-                with patch("service.pr_service.save_pr_metadata", fake_save_pr_metadata):
-                    with patch("service.pr_service.trigger_review_agent", fake_trigger_review_agent):
-                        handle_pull_request(payload)
+    with patch("service.pr_service.get_installation_headers", fake_get_installation_headers):
+        with patch("service.pr_service.fetch_pr_diff", fake_fetch_pr_diff):
+            with patch("service.pr_service.fetch_pr_files", fake_fetch_pr_files):
+                with patch("service.pr_service.record_text", fake_record_text):
+                    with patch("service.pr_service.save_pr_metadata", fake_save_pr_metadata):
+                        with patch("service.pr_service.trigger_review_agent", fake_trigger_review_agent):
+                            handle_pull_request(payload)
 
-    fake_fetch_pr_diff.assert_called_once_with("octo", "demo", 7)
-    fake_fetch_pr_files.assert_called_once_with("octo", "demo", 7)
-    fake_trigger_review_agent.assert_called_once_with("octo/demo", 7)
+    fake_get_installation_headers.assert_called_once_with(123)
+    fake_fetch_pr_diff.assert_called_once_with("octo", "demo", 7, TEST_GITHUB_HEADERS)
+    fake_fetch_pr_files.assert_called_once_with("octo", "demo", 7, TEST_GITHUB_HEADERS)
+    fake_trigger_review_agent.assert_called_once_with("octo/demo", 7, TEST_GITHUB_HEADERS)
 
     fake_record_text.assert_called_once_with(
         "gh:octo/demo#7",
@@ -174,7 +180,7 @@ def test_trigger_review_agent_still_records_when_github_post_fails()-> None:
             with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                 with patch("service.pr_service.record_text", fake_record_text):
                     with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                        trigger_review_agent("baron", 9)
+                        trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
     fake_review_pull_request.assert_called_once_with("baron", 9)
     fake_build_pr_context.assert_called_once_with("baron", 9)
     fake_plan_pr_workflow.assert_called_once_with({"repo_full_name": "baron", "pr_number": 9})
@@ -183,7 +189,7 @@ def test_trigger_review_agent_still_records_when_github_post_fails()-> None:
         "response",
         "AI review text",
     )
-    fake_post_pr_comment.assert_called_once_with("baron",9,"AI review text")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text", TEST_GITHUB_HEADERS)
 
 
 def test_handle_pull_request_review_ignores_non_submitted_action() -> None:
@@ -363,7 +369,7 @@ diff --git a/examples/hdl/counter.sv b/examples/hdl/counter.sv
                             "service.pr_service.post_pr_inline_comment",
                             fake_post_pr_inline_comment,
                         ):
-                            trigger_review_agent("baron", 9)
+                            trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_review_pull_request.assert_called_once_with("baron", 9)
     fake_build_pr_context.assert_called_once_with("baron", 9)
@@ -373,7 +379,7 @@ diff --git a/examples/hdl/counter.sv b/examples/hdl/counter.sv
         "response",
         "Quartz found one suggestion.",
     )
-    fake_post_pr_comment.assert_called_once_with("baron", 9, "Quartz found one suggestion.")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "Quartz found one suggestion.", TEST_GITHUB_HEADERS)
     fake_post_pr_inline_comment.assert_called_once_with(
         "baron",
         9,
@@ -381,6 +387,7 @@ diff --git a/examples/hdl/counter.sv b/examples/hdl/counter.sv
         "examples/hdl/counter.sv",
         14,
         expected_inline_comment_body,
+        TEST_GITHUB_HEADERS,
         start_line=None,
     )
 
@@ -445,9 +452,9 @@ diff --git a/examples/hdl/counter.sv b/examples/hdl/counter.sv
                             "service.pr_service.post_pr_inline_comment",
                             fake_post_pr_inline_comment,
                         ):
-                            trigger_review_agent("baron", 9)
+                            trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
-    fake_post_pr_comment.assert_called_once_with("baron", 9, "Quartz found one concern.")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "Quartz found one concern.", TEST_GITHUB_HEADERS)
     fake_post_pr_inline_comment.assert_not_called()
 
 def test_post_pr_comment_posts_comment_to_github()-> None:
@@ -462,7 +469,7 @@ def test_post_pr_comment_posts_comment_to_github()-> None:
     fake_context.__exit__.return_value = None
 
     with patch("service.pr_service.httpx.Client", return_value=fake_context):
-        result = post_pr_comment("octo/demo", 7, "AI review text")
+        result = post_pr_comment("octo/demo", 7, "AI review text", TEST_GITHUB_HEADERS)
     
     assert result == {"id": 123}
     fake_client.post.assert_called_once_with(
@@ -482,7 +489,7 @@ def test_trigger_review_agent_does_not_record_or_post_when_review_generation_fai
             with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                 with patch("service.pr_service.record_text", fake_record_text):
                     with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                        trigger_review_agent("baron", 9)
+                        trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_review_pull_request.assert_called_once_with("baron", 9)
     fake_build_pr_context.assert_called_once_with("baron", 9)
@@ -502,7 +509,7 @@ def test_trigger_review_agent_skips_review_when_orchestrator_excludes_review() -
             with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                 with patch("service.pr_service.record_text", fake_record_text):
                     with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                        trigger_review_agent("baron", 9)
+                        trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_build_pr_context.assert_called_once_with("baron", 9)
     fake_plan_pr_workflow.assert_called_once_with(
@@ -545,16 +552,17 @@ def test_trigger_review_agent_runs_execution_when_orchestrator_includes_executio
                 with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                     with patch("service.pr_service.record_text", fake_record_text):
                         with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                            trigger_review_agent("baron", 9)
+                            trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_execute_pull_request_files.assert_called_once_with(
         "baron",
         "head-sha",
         ["rtl/counter.sv"],
+        TEST_GITHUB_HEADERS,
     )
     fake_review_pull_request.assert_called_once_with("baron", 9)
     fake_record_text.assert_any_call("gh:baron#9", "response", "AI review text")
-    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text", TEST_GITHUB_HEADERS)
 
 def test_trigger_review_agent_records_execution_result_when_execution_runs() -> None:
     fake_review_pull_request = Mock(
@@ -591,12 +599,13 @@ def test_trigger_review_agent_records_execution_result_when_execution_runs() -> 
                 with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                     with patch("service.pr_service.record_text", fake_record_text):
                         with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                            trigger_review_agent("baron", 9)
+                            trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_execute_pull_request_files.assert_called_once_with(
         "baron",
         "head-sha",
         ["rtl/counter.sv"],
+        TEST_GITHUB_HEADERS,
     )
 
     assert fake_record_text.call_count == 2
@@ -638,11 +647,11 @@ def test_trigger_review_agent_skips_execution_when_pr_commit_id_is_missing() -> 
                 with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                     with patch("service.pr_service.record_text", fake_record_text):
                         with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                            trigger_review_agent("baron", 9)
+                            trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_execute_pull_request_files.assert_not_called()
     fake_review_pull_request.assert_called_once_with("baron", 9)
-    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text")
+    fake_post_pr_comment.assert_called_once_with("baron", 9, "AI review text", TEST_GITHUB_HEADERS)
 
 def test_trigger_review_agent_records_orchestrator_decision_reason() -> None:
     fake_review_pull_request = Mock(
@@ -672,7 +681,7 @@ def test_trigger_review_agent_records_orchestrator_decision_reason() -> None:
             with patch("agents.orchestrator_agent.plan_pr_workflow", fake_plan_pr_workflow):
                 with patch("service.pr_service.record_text", fake_record_text):
                     with patch("service.pr_service.post_pr_comment", fake_post_pr_comment):
-                        trigger_review_agent("baron", 9)
+                        trigger_review_agent("baron", 9, TEST_GITHUB_HEADERS)
 
     fake_record_text.assert_any_call(
         "gh:baron#9",
@@ -701,6 +710,7 @@ def test_post_pr_inline_comment_posts_inline_comment_to_github() -> None:
             "examples/hdl/counter.sv",
             14,
             comment_body,
+            TEST_GITHUB_HEADERS,
         )
 
     assert result == {"id": 456}
@@ -738,6 +748,7 @@ def test_post_pr_inline_comment_includes_start_line_for_multi_line_comment() -> 
             "examples/hdl/counter.sv",
             18,
             "Replace this whole block.",
+            TEST_GITHUB_HEADERS,
             start_line=10,
         )
 

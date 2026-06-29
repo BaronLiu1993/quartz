@@ -6,6 +6,7 @@ from service.pr_execution_service import execute_pull_request_files
 
 def test_execute_pull_request_files_fetches_writes_and_lints_hdl_targets() -> None:
     seen_file = {}
+    github_headers = {"Authorization": "Bearer app-token"}
 
     def fake_execute_target(local_target: str) -> dict:
         local_path = Path(local_target)
@@ -25,12 +26,14 @@ def test_execute_pull_request_files_fetches_writes_and_lints_hdl_targets() -> No
                 "octo/demo",
                 "commit-123",
                 ["rtl/counter.sv", "README.md"],
+                github_headers,
             )
 
     fake_fetch_file_text.assert_called_once_with(
         "octo/demo",
         "rtl/counter.sv",
         "commit-123",
+        github_headers,
     )
     fake_execute_target_call.assert_called_once()
     assert seen_file["path"].name == "counter.sv"

@@ -8,6 +8,8 @@ from typing import Any, Optional
 import httpx
 import re
 
+from service.github_auth import get_installation_headers
+
 from memory.conversation_memory import (
     PRMetadataModel,
     RawConveresationModel,
@@ -38,9 +40,9 @@ def verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     logger.info(f"Signature verification: {'valid' if is_valid else 'invalid'}")
     return is_valid
 
-def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
+def fetch_pr_diff(owner: str, repo: str, number: int, github_headers: dict[str,str]) -> tuple[str, bool]:
     logger.info(f"Fetching PR diff | owner={owner} | repo={repo} | number={number}")
-    headers = {**GITHUB_HEADERS, "Accept": "application/vnd.github.v3.diff"}
+    headers = {**github_headers, "Accept": "application/vnd.github.v3.diff"}
     try:
         with httpx.Client(timeout=HTTP_TIMEOUT) as client:
             response = client.get(
@@ -61,9 +63,9 @@ def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
         raise
 
 
-def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
+def fetch_pr_files(owner: str, repo: str, number: int, github_headers: dict[str,str]) -> list[str]:
     filenames: list[str] = []
-    with httpx.Client(timeout=HTTP_TIMEOUT, headers=GITHUB_HEADERS) as client:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers=github_headers) as client:
         page = 1
         while True:
             response = client.get(
@@ -80,8 +82,13 @@ def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
             page += 1
     return filenames
 
-def post_pr_comment(repo_full_name:str, pr_number:int, body:str) -> dict[str,Any]:
-    with httpx.Client(timeout=HTTP_TIMEOUT,headers =GITHUB_HEADERS) as client:
+def post_pr_comment(
+    repo_full_name: str,
+    pr_number: int,
+    body: str,
+    github_headers: dict[str, str],
+) -> dict[str, Any]:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers=github_headers) as client:
         response = client.post(
             f"{GITHUB_API}/repos/{repo_full_name}/issues/{pr_number}/comments",json={"body": body}
         )
@@ -141,7 +148,7 @@ def save_pr_metadata(
         )
     )
 
-def trigger_review_agent(repo_full_name: str, pr_number: int):
+def trigger_review_agent(repo_full_name: str, pr_number: int, github_headers: dict[str,str]):
     from agents.review_agent import review_pull_request
     from service.agent_service import build_pr_context
     from agents.orchestrator_agent import plan_pr_workflow
@@ -166,7 +173,7 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
         pr_commit_sha = metadata.get("head_sha") 
 
         if pr_commit_sha is not None:
-            execution_result = execute_pull_request_files(repo_full_name, pr_commit_sha, files_changed)
+            execution_result = execute_pull_request_files(repo_full_name, pr_commit_sha, files_changed, github_headers)
             record_text(
                 session_id_for(repo_full_name, pr_number),
                 "response",
@@ -190,7 +197,7 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
     record_text(session, "response", review.summary)
 
     try:
-        post_pr_comment(repo_full_name, pr_number, review.summary)
+        post_pr_comment(repo_full_name, pr_number, review.summary, github_headers)
     except Exception:
         logger.exception("Failed to post PR summary comment")
     
@@ -233,6 +240,7 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
                 comment.path,
                 comment.line,
                 formatted_comment_body,
+                github_headers,
                 start_line=comment.start_line,
             )
         except Exception:
@@ -244,17 +252,19 @@ def handle_pull_request(payload: dict[str, Any]) -> None:
         return
 
     pr = payload["pull_request"]
+    installation_id = payload["installation"]["id"]
+    github_headers = get_installation_headers(installation_id)
     repo_full_name = payload["repository"]["full_name"]
     owner, repo = repo_full_name.split("/", 1)
     number = pr["number"]
     session = session_id_for(repo_full_name, number)
 
-    diff_text, truncated = fetch_pr_diff(owner, repo, number)
-    files = fetch_pr_files(owner, repo, number)
+    diff_text, truncated = fetch_pr_diff(owner, repo, number, github_headers)
+    files = fetch_pr_files(owner, repo, number,github_headers)
 
     record_text(session, "code", diff_text)
     save_pr_metadata(pr, repo_full_name, files, f"pull_request.{action}", truncated)
-    trigger_review_agent(repo_full_name,number )
+    trigger_review_agent(repo_full_name,number, github_headers )
 
 def handle_pull_request_review(payload: dict[str, Any]) -> None:
     if payload.get("action") != "submitted":
@@ -299,7 +309,16 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
         logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
 
-def post_pr_inline_comment(repo_full_name:str, pr_number:int, commit_id:str, path:str, line:int, body:str, start_line:int | None = None)-> dict[str,Any]:
+def post_pr_inline_comment(
+    repo_full_name: str,
+    pr_number: int,
+    commit_id: str,
+    path: str,
+    line: int,
+    body: str,
+    github_headers: dict[str, str],
+    start_line: int | None = None,
+) -> dict[str, Any]:
     payload = {
             "body": body,
             "commit_id": commit_id,
@@ -311,7 +330,7 @@ def post_pr_inline_comment(repo_full_name:str, pr_number:int, commit_id:str, pat
         payload["start_line"] = start_line
         payload["start_side"] = "RIGHT"
     
-    with httpx.Client(timeout=HTTP_TIMEOUT, headers= GITHUB_HEADERS) as client:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers=github_headers) as client:
         response = client.post(
             f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/comments",
             json= payload

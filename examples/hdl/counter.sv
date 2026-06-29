@@ -17,6 +17,6 @@ module counter #(
             count = count + 1'b1;
         end
     end
-    // Trigger webhook retest
+    // test GitHub App review trigger
     assign broken_signal = ;
 endmodule
