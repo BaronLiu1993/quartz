@@ -55,11 +55,17 @@ def get_supported_repo_files(paths: list[str]) -> list[str]:
     return supported_files
 
 
-def fetch_github_file_text(repo_full_name: str, path: str, ref: str) -> str:
+def fetch_github_file_text(
+    repo_full_name: str,
+    path: str,
+    ref: str,
+    github_headers: dict[str, str] | None = None,
+) -> str:
     """Fetch one GitHub file at a branch/tag/SHA and return decoded text."""
     url = f"https://api.github.com/repos/{repo_full_name}/contents/{path}"
+    headers = github_headers or get_github_headers()
 
-    with httpx.Client(timeout=30.0, headers=get_github_headers()) as client:
+    with httpx.Client(timeout=30.0, headers=headers) as client:
         response = client.get(url, params={"ref": ref})
         response.raise_for_status()
         data = response.json()

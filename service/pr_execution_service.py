@@ -4,7 +4,12 @@ from tempfile import TemporaryDirectory
 from ingestion.codebase_ingestion import fetch_github_file_text
 from agents.execution_agent import execute_target, get_hdl_targets, all_results_passed
 
-def execute_pull_request_files(repo_full_name:str, pr_commit_sha:str, files_changed:list[str]):
+def execute_pull_request_files(
+    repo_full_name: str,
+    pr_commit_sha: str,
+    files_changed: list[str],
+    github_headers: dict[str, str] | None = None,
+):
     hdl_targets = get_hdl_targets(files_changed)
     
     if not hdl_targets:
@@ -20,7 +25,7 @@ def execute_pull_request_files(repo_full_name:str, pr_commit_sha:str, files_chan
         workspace_path = Path(temporary_directory)
 
         for target in hdl_targets:
-            file_text =fetch_github_file_text(repo_full_name, target, pr_commit_sha)
+            file_text =fetch_github_file_text(repo_full_name, target, pr_commit_sha, github_headers)
             local_target = workspace_path/target
             local_target.parent.mkdir(parents=True, exist_ok=True)
             local_target.write_text(file_text, "utf-8")
