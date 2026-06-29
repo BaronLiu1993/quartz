@@ -17,6 +17,5 @@ module counter #(
             count = count + 1'b1;
         end
     end
-    // test GitHub App review trigger
     assign broken_signal = ;
 endmodule
