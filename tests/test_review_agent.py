@@ -4,11 +4,11 @@ from unittest.mock import Mock, patch
 from langchain.messages import AIMessage, ToolMessage,HumanMessage
 from agents.review_agent import tool_node
 from langgraph.graph import END
-
+from langchain.messages import AIMessage
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from agents.review_agent import get_pr_history, continue_researching, get_review_graph, _load_system_review_prompt, review_pull_request, start_research, execute_simulation, REVIEW_TOOLS_BY_NAME, get_verible_lint_targets, get_vhdl_lint_targets
+from agents.review_agent import get_pr_history, continue_researching, get_review_graph, _load_system_review_prompt, review_pull_request, start_research, execute_simulation, REVIEW_TOOLS_BY_NAME, get_verible_lint_targets, get_vhdl_lint_targets, extract_structured_review
 
 def test_get_pr_history_returns_built_pr_context() -> None:
     expected_context = {
@@ -119,14 +119,30 @@ def test_review_pull_request_invokes_review_graph()-> None:
     fake_graph = Mock()
     fake_graph.invoke.return_value = {"messages":[
         HumanMessage(content="start"),
-        AIMessage(content="final review text"),
+        AIMessage(
+            content="""
+            {
+                "summary": "Quartz found one suggestion.",
+                "comments": [
+                    {
+                        "path": "examples/hdl/counter.sv",
+                        "line": 14,
+                        "body": "`clear` is synchronous. Add a short comment."
+                    }
+                ]
+            }
+            """
+        ),
     ]
     }
 
     with patch("agents.review_agent.get_review_graph", return_value=fake_graph):
         result = review_pull_request("baron", 9)
 
-    assert result == "final review text"
+    assert result.summary == "Quartz found one suggestion."
+    assert len(result.comments) == 1
+    assert result.comments[0].path == "examples/hdl/counter.sv"
+    assert result.comments[0].line == 14
     fake_graph.invoke.assert_called_once()
 
     graph_input = fake_graph.invoke.call_args.args[0]
@@ -142,12 +158,21 @@ def test_load_system_review_prompt_reads_prompt_file()-> None:
 
     assert "HDL pull request review agent" in prompt
     assert "get_pr_history" in prompt
-    assert "No blocking issues found." in prompt
     assert "Do not invent files" in prompt
-    assert "GitHub PR comment" in prompt
     assert "start_research" in prompt
     assert "project knowledge" in prompt
-    assert "lint violations" in prompt
+    assert "Return only a valid JSON object." in prompt
+    assert "Do not use Markdown or JSON code fences." in prompt
+    assert '"summary"' in prompt
+    assert '"comments"' in prompt
+    assert '"path"' in prompt
+    assert '"start_line"' in prompt
+    assert '"line"' in prompt
+    assert '"body"' in prompt
+    assert '"replacement_code"' in prompt
+    assert "Set replacement_code only when" in prompt
+    assert "Do not put Markdown fences around replacement_code" in prompt
+    assert "empty comments list: []" in prompt
 
 
 def test_start_research_searches_relevant_chunks() -> None:
@@ -440,3 +465,31 @@ def test_execute_simulation_lints_changed_pr_verilog_and_vhdl_files() -> None:
         "docs/readme.md",
     ])
     assert result == expected_result
+
+def test_extract_structured_review_parses_summary_and_inline_comments() -> None:
+    review_state = {
+        "messages": [
+            AIMessage(
+                content="""
+                {
+                    "summary": "Quartz found one suggestion.",
+                    "comments": [
+                        {
+                            "path": "examples/hdl/counter.sv",
+                            "line": 14,
+                            "body": "`clear` is synchronous. Add a short comment."
+                        }
+                    ]
+                }
+                """
+            )
+        ]
+    }
+
+    result = extract_structured_review(review_state)
+
+    assert result.summary == "Quartz found one suggestion."
+    assert len(result.comments) == 1
+    assert result.comments[0].path == "examples/hdl/counter.sv"
+    assert result.comments[0].line == 14
+    assert result.comments[0].body == "`clear` is synchronous. Add a short comment."

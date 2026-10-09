@@ -5,11 +5,22 @@ services:
     build: .
     container_name: quartz-api
     restart: unless-stopped
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 
     env_file:
       - .env
     ports:
       - "8000:8000"
+    depends_on:
+      - mongodb
+      - rabbitmq
+  
+  worker:
+    build: .
+    container_name: quartz-worker
+    restart: unless-stopped
+    command: celery -A async_queue.config.app worker --loglevel=info
+    env_file:
+      - .env
     depends_on:
       - mongodb
       - rabbitmq

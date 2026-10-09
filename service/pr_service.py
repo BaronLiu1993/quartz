@@ -2,9 +2,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 import httpx
+import re
+
+from service.github_auth import get_installation_headers
 
 from memory.conversation_memory import (
     PRMetadataModel,
@@ -36,9 +40,9 @@ def verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     logger.info(f"Signature verification: {'valid' if is_valid else 'invalid'}")
     return is_valid
 
-def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
+def fetch_pr_diff(owner: str, repo: str, number: int, github_headers: dict[str,str]) -> tuple[str, bool]:
     logger.info(f"Fetching PR diff | owner={owner} | repo={repo} | number={number}")
-    headers = {**GITHUB_HEADERS, "Accept": "application/vnd.github.v3.diff"}
+    headers = {**github_headers, "Accept": "application/vnd.github.v3.diff"}
     try:
         with httpx.Client(timeout=HTTP_TIMEOUT) as client:
             response = client.get(
@@ -59,9 +63,9 @@ def fetch_pr_diff(owner: str, repo: str, number: int) -> tuple[str, bool]:
         raise
 
 
-def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
+def fetch_pr_files(owner: str, repo: str, number: int, github_headers: dict[str,str]) -> list[str]:
     filenames: list[str] = []
-    with httpx.Client(timeout=HTTP_TIMEOUT, headers=GITHUB_HEADERS) as client:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers=github_headers) as client:
         page = 1
         while True:
             response = client.get(
@@ -78,8 +82,13 @@ def fetch_pr_files(owner: str, repo: str, number: int) -> list[str]:
             page += 1
     return filenames
 
-def post_pr_comment(repo_full_name:str, pr_number:int, body:str) -> dict[str,Any]:
-    with httpx.Client(timeout=HTTP_TIMEOUT,headers =GITHUB_HEADERS) as client:
+def post_pr_comment(
+    repo_full_name: str,
+    pr_number: int,
+    body: str,
+    github_headers: dict[str, str],
+) -> dict[str, Any]:
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers=github_headers) as client:
         response = client.post(
             f"{GITHUB_API}/repos/{repo_full_name}/issues/{pr_number}/comments",json={"body": body}
         )
@@ -139,7 +148,7 @@ def save_pr_metadata(
         )
     )
 
-def trigger_review_agent(repo_full_name: str, pr_number: int):
+def trigger_review_agent(repo_full_name: str, pr_number: int, github_headers: dict[str,str]):
     from agents.review_agent import review_pull_request
     from service.agent_service import build_pr_context
     from agents.orchestrator_agent import plan_pr_workflow
@@ -157,34 +166,85 @@ def trigger_review_agent(repo_full_name: str, pr_number: int):
         )
 
     if "execution" in steps:
-        from agents.execution_agent import execute_changed_files
+        from service.pr_execution_service import execute_pull_request_files
 
         metadata = pr_context.get("metadata") or {}
         files_changed = metadata.get("files_changed") or []
-        execution_result = execute_changed_files(files_changed)
-        record_text(
-            session_id_for(repo_full_name, pr_number),
-            "response",
-            f"Execution result: {execution_result}",
-        )
+        pr_commit_sha = metadata.get("head_sha") 
+
+        if pr_commit_sha is not None:
+            execution_result = execute_pull_request_files(repo_full_name, pr_commit_sha, files_changed, github_headers)
+            record_text(
+                session_id_for(repo_full_name, pr_number),
+                "response",
+                f"Execution result: {execution_result}",
+            )
+        else:
+            logger.warning("Execution was skipped due to the PR having no Head commit ID")
+            
 
     if "review" not in steps:
         logger.info("Orchestrator skipped review | repo=%s pr=%s", repo_full_name, pr_number)
         return
     
     try:
-        review_text = review_pull_request(repo_full_name, pr_number)
+        review = review_pull_request(repo_full_name, pr_number)
     except Exception:
         logger.exception("Failed to generate PR review")
         return
 
     session = session_id_for(repo_full_name, pr_number)
-    record_text(session, "response", review_text)
+    record_text(session, "response", review.summary)
 
     try:
-        post_pr_comment(repo_full_name, pr_number, review_text)
+        post_pr_comment(repo_full_name, pr_number, review.summary, github_headers)
     except Exception:
-        logger.exception("Failed to post PR review comment")
+        logger.exception("Failed to post PR summary comment")
+    
+    #SHA is Git's name for the unique fingerprint of one commit
+    latest_pr_commit_sha = (pr_context.get("metadata") or {}).get("head_sha")
+
+    if latest_pr_commit_sha is None:
+        logger.warning(
+            "Skipping inline PR comments because the latest PR commit SHA is unavailable"
+        )
+        return
+    
+    code_entries = pr_context.get("code_entries") or []
+
+    diff_parts = []
+
+    for entry in code_entries:
+        diff_parts.append(entry.get("raw_conversation",""))
+    
+    diff_text = "\n".join(diff_parts)
+
+    changed_lines = get_changed_lines_by_file(diff_text)
+
+    for comment in review.comments:
+        if not is_valid_inline_comment_location(
+            comment.path,
+            comment.line,
+            changed_lines,
+            start_line=comment.start_line,
+        ):
+            logger.warning("skipping inline PR comment outside the changed diff: %s:%s",comment.path,comment.line)
+            continue
+
+        formatted_comment_body = format_inline_comment_body(comment.body,comment.replacement_code)
+        try:
+            post_pr_inline_comment(
+                repo_full_name,
+                pr_number,
+                latest_pr_commit_sha,
+                comment.path,
+                comment.line,
+                formatted_comment_body,
+                github_headers,
+                start_line=comment.start_line,
+            )
+        except Exception:
+            logger.exception("Failed to post inline PR review comment")
 
 def handle_pull_request(payload: dict[str, Any]) -> None:
     action = payload.get("action")
@@ -192,17 +252,19 @@ def handle_pull_request(payload: dict[str, Any]) -> None:
         return
 
     pr = payload["pull_request"]
+    installation_id = payload["installation"]["id"]
+    github_headers = get_installation_headers(installation_id)
     repo_full_name = payload["repository"]["full_name"]
     owner, repo = repo_full_name.split("/", 1)
     number = pr["number"]
     session = session_id_for(repo_full_name, number)
 
-    diff_text, truncated = fetch_pr_diff(owner, repo, number)
-    files = fetch_pr_files(owner, repo, number)
+    diff_text, truncated = fetch_pr_diff(owner, repo, number, github_headers)
+    files = fetch_pr_files(owner, repo, number,github_headers)
 
     record_text(session, "code", diff_text)
     save_pr_metadata(pr, repo_full_name, files, f"pull_request.{action}", truncated)
-    trigger_review_agent(repo_full_name,number )
+    trigger_review_agent(repo_full_name,number, github_headers )
 
 def handle_pull_request_review(payload: dict[str, Any]) -> None:
     if payload.get("action") != "submitted":
@@ -247,3 +309,103 @@ def route_event(event: str, payload: dict[str, Any]) -> None:
         logger.error(f"Failed to route event, event={event}, error={str(e)}", exc_info=True)
         raise
 
+def post_pr_inline_comment(
+    repo_full_name: str,
+    pr_number: int,
+    commit_id: str,
+    path: str,
+    line: int,
+    body: str,
+    github_headers: dict[str, str],
+    start_line: int | None = None,
+) -> dict[str, Any]:
+    payload = {
+            "body": body,
+            "commit_id": commit_id,
+            "path": path,
+            "line": line,
+            "side":"RIGHT",
+            }
+    if start_line is not None:
+        payload["start_line"] = start_line
+        payload["start_side"] = "RIGHT"
+    
+    with httpx.Client(timeout=HTTP_TIMEOUT, headers=github_headers) as client:
+        response = client.post(
+            f"{GITHUB_API}/repos/{repo_full_name}/pulls/{pr_number}/comments",
+            json= payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+def format_inline_comment_body(body:str, replacement_code:str | None,)->str:
+    if not replacement_code:
+        return body
+    
+    return f"""{body}
+
+```suggestion
+{replacement_code.rstrip()}
+```"""
+#suggestion is wrote here, since github sees that special suggestion block and displays the code as an applyable suggestion
+
+def get_changed_lines_by_file(diff_text: str) -> dict[str, set[int]]:
+    changed_lines: dict[str, set[int]] = {}
+    current_path: str | None = None
+    new_line_number: int | None = None
+
+    for diff_line in diff_text.splitlines():
+        # Reset the file state when the diff begins another file.
+        if diff_line.startswith("diff --git "):
+            current_path = None
+            new_line_number = None
+            continue
+
+        # Record the path of the new version of the changed file.
+        if diff_line.startswith("+++ b/"):
+            current_path = diff_line.removeprefix("+++ b/")
+            changed_lines.setdefault(current_path, set())
+            continue
+
+        # Skip file metadata because it is not a line of code.
+        if diff_line.startswith("+++ /dev/null") or diff_line.startswith("--- "):
+            continue
+
+        # Read the new-file starting line from a hunk header such as @@ -3,13 +3,16 @@.
+        if diff_line.startswith("@@"):
+            match = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", diff_line)
+
+            # Only update the counter when the hunk header has the expected format.
+            if match:
+                new_line_number = int(match.group(1))
+            continue
+
+        # Ignore lines until both a target file and its new-file line number are known.
+        if current_path is None or new_line_number is None:
+            continue
+
+        # Added lines are valid locations for an inline PR comment.
+        if diff_line.startswith("+"):
+            changed_lines[current_path].add(new_line_number)
+            new_line_number += 1
+        # Deleted lines and the no-newline marker do not exist in the new file.
+        elif diff_line.startswith("-") or diff_line.startswith("\\"):
+            continue
+        else:
+            # Unchanged context still occupies a line in the new file.
+            new_line_number += 1
+
+    return changed_lines
+
+def is_valid_inline_comment_location(
+    path: str,
+    line: int,
+    changed_lines: dict[str, set[int]],
+    start_line: int | None = None,
+) -> bool:
+    file_changed_lines = changed_lines.get(path, set())
+
+    if line not in file_changed_lines:
+        return False
+
+    return start_line is None or start_line in file_changed_lines

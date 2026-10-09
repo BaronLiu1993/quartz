@@ -1,4 +1,4 @@
-module counter #(
+module up_counter #(
     parameter int WIDTH = 8
 ) (
     input  logic             clk,
@@ -10,12 +10,11 @@ module counter #(
 
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
-            count <= '0;
+            count = '0;
         end else if (clear) begin
             count <= '0;
         end else if (enable) begin
-            count = count + 1'b1;
+            count <= count + 1'b1;
         end
     end
-    assign broken_signal = ;
 endmodule

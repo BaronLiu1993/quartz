@@ -5,6 +5,7 @@ from ingestion.codebase_ingestion import (
     fetch_github_repo_tree,
     fetch_supported_repo_file_texts,
     fetch_supported_repo_paths,
+    get_github_headers,
     get_supported_repo_files,
     infer_file_type,
     ingest_github_codebase,
@@ -14,6 +15,13 @@ from ingestion.codebase_ingestion import (
     is_txt_file,
     process_repo_file_texts,
 )
+
+def test_get_github_headers_includes_token_when_available() -> None:
+    with patch.dict("os.environ", {"GITHUB_TOKEN": "secret-token"}):
+        headers = get_github_headers()
+
+    assert headers["Authorization"] == "Bearer secret-token"
+    assert headers["Accept"] == "application/vnd.github+json"
 
 def test_is_supported_repo_file_accepts_hdl_and_docs() -> None:
     assert is_supported_repo_file("rtl/counter.sv") is True

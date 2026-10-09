@@ -1,9 +1,10 @@
 from celery import Celery
 from kombu import Queue
+import os
 
 app = Celery(
     "quartz",
-    broker="amqp://guest:guest@localhost:5672//",
+    broker=os.getenv("CELERY_BROKER_URL", "amqp://guest:guest@rabbitmq:5672//"),
     include=["async_queue.pr_task", "async_queue.ingest_codebase"],
 )
 

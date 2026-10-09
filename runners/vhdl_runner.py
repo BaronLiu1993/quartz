@@ -2,8 +2,9 @@ import subprocess
 
 def run_vhdl_lint(target:str):
     """ Runs GHDL analysis on a VHDL file."""
-    cmd = f"ghdl -a {target}"
-    result = subprocess.run(cmd,shell= True, capture_output= True, text= True)
+    args = ["ghdl", "-a", target]
+    cmd = " ".join(args)
+    result = subprocess.run(args, capture_output= True, text= True)
 
     return{
         "tool":"ghdl",

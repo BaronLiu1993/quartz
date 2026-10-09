@@ -13,8 +13,7 @@ def test_run_lint_returns_structured_result() -> None:
         result = run_lint("rtl/counter.sv")
 
     fake_run.assert_called_once_with(
-        "verible-verilog-lint rtl/counter.sv",
-        shell=True,
+        ["verible-verilog-lint", "rtl/counter.sv"],
         capture_output=True,
         text=True,
     )
